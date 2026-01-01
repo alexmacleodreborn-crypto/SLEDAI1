@@ -1,16 +1,9 @@
 from typing import Dict, Any, List
 from collections import defaultdict
 from a7do.sleep import SleepEngine
+from a7do.somatic import SomaticState
 
 class A7DOMind:
-    """
-    Non-aware learner:
-    - event memory
-    - lexicon exposure
-    - association edges
-    - transaction recording
-    - coherence gating
-    """
     def __init__(self, world_map, profiles, schedule):
         self.world = world_map
         self.profiles = profiles
@@ -22,6 +15,8 @@ class A7DOMind:
         self.trace: List[Dict[str, Any]] = []
 
         self.sleep_engine = SleepEngine()
+        self.somatic = SomaticState()
+
         self.last_coherence = None
         self.last_sleep = None
         self.last_action = None
@@ -39,21 +34,12 @@ class A7DOMind:
             issues.append(f"unknown_place:{ev.place_id}")
         else:
             place = self.world.places[ev.place_id]
-            if place.kind in ("hospital", "house") and ev.room not in place.rooms:
+            if place.kind in ("hospital", "house") and ev.room and ev.room not in place.rooms:
                 issues.append(f"unknown_room:{ev.room}")
 
-        # agent can be A7DO or in profiles
-        agent_ok = (ev.agent == "A7DO") or (ev.agent in self.profiles.people) or (ev.agent in self.profiles.animals)
+        agent_ok = (ev.agent == "A7DO") or (ev.agent in self.profiles.people) or (ev.agent in self.profiles.animals) or (ev.agent in ("Nurse", "Street"))
         if not agent_ok:
             issues.append(f"unknown_agent:{ev.agent}")
-
-        # object can be None, speech token, or a profile object/animal/person name
-        if ev.obj:
-            ok = (ev.obj in self.profiles.objects) or (ev.obj in self.profiles.animals) or (ev.obj in self.profiles.people)
-            # allow simple speech tokens like "hello", "home", "ball" (tracked by lexicon)
-            if not ok and len(ev.obj) > 0:
-                # do NOT block; flag as floating token
-                issues.append(f"floating_token:{ev.obj}")
 
         score = 1.0 if not issues else max(0.0, 1.0 - 0.2 * len(issues))
         return {"score": round(score, 2), "issues": issues}
@@ -67,7 +53,7 @@ class A7DOMind:
             self.trace.append({"phase": "blocked", "prompt": ev.prompt(), "coherence": coh})
             return {"ok": False, "blocked": True, "coherence": coh}
 
-        # apply movement
+        # movement
         if ev.to_place_id:
             self.schedule.spatial.place_id = ev.to_place_id
         if ev.to_room:
@@ -77,24 +63,27 @@ class A7DOMind:
         if ev.motor.get("type"):
             self.schedule.spatial.locomotion = ev.motor.get("type")
 
+        # somatic touch
+        tv = getattr(ev, "touch_vector", None) or {}
+        if tv and "region" in tv:
+            self.somatic.apply_touch(
+                region=str(tv.get("region")),
+                pressure=float(tv.get("pressure", 0.0)),
+                temperature=float(tv.get("temp", 0.0)),
+                duration_s=float(tv.get("duration_s", 0.0)),
+            )
+
         # store memory
         self.memory.append(ev)
 
-        # lexicon exposure
-        self._inc(ev.place_id)
-        self._inc(ev.room)
-        self._inc(ev.agent)
-        self._inc(ev.action)
-        if ev.obj:
-            self._inc(ev.obj)
+        # lexicon
+        for token in [ev.place_id, ev.room, ev.agent, ev.action, ev.obj]:
+            if token:
+                self._inc(str(token))
         for w in ev.emphasis:
             self._inc(w)
-        if ev.sound: self._inc("sound")
-        if ev.smell: self._inc("smell")
-        if ev.touch: self._inc("touch")
-        if ev.motor: self._inc("motor")
 
-        # association edges
+        # edges
         a = f"agent:{ev.agent}"
         p = f"place:{ev.place_id}"
         r = f"room:{ev.room}"
@@ -105,11 +94,10 @@ class A7DOMind:
             o = f"obj:{ev.obj}"
             self.edges[(a, o)] += 1
             self.edges[(o, p)] += 1
-        if ev.to_place_id:
-            tp = f"place:{ev.to_place_id}"
-            self.edges[(p, tp)] += 1
+        for pr in ev.presence:
+            self.edges[(a, f"present:{pr}")] += 1
 
-        # transaction logging for social
+        # transaction logging
         if ev.transaction and ev.transaction.get("target") == "A7DO":
             outcome = ev.transaction.get("outcome", "calm")
             self.profiles.set_interaction(ev.agent, outcome=outcome, day=self.schedule.day)
@@ -124,17 +112,10 @@ class A7DOMind:
                 "agent": ev.agent,
                 "action": ev.action,
                 "obj": ev.obj,
-                "emphasis": ev.emphasis,
-                "sound": ev.sound,
-                "smell": ev.smell,
-                "touch": ev.touch,
-                "motor": ev.motor,
-                "to_place_id": ev.to_place_id,
-                "to_room": ev.to_room,
-                "pos_xyz": ev.pos_xyz,
-                "body": ev.body,
-                "transaction": ev.transaction,
-                "narrator": ev.narrator,
+                "presence": ev.presence,
+                "touch_vector": ev.touch_vector,
+                "coherence": coh,
+                "narrator": ev.narrator
             },
             "coherence": coh
         })
