@@ -9,28 +9,30 @@ class ExperienceEvent:
     action: str
     obj: Optional[str] = None
 
-    # “story text” is not given to A7DO, but Observer can see it
     narrator: Optional[str] = None
-
-    # emphasis tokens (e.g., BALL)
     emphasis: List[str] = field(default_factory=list)
 
-    # sensory channels
     sound: Dict[str, str] = field(default_factory=dict)
     smell: Dict[str, str] = field(default_factory=dict)
     touch: Dict[str, str] = field(default_factory=dict)
     motor: Dict[str, str] = field(default_factory=dict)
 
-    # movement inference
+    # movement
     to_place_id: Optional[str] = None
     to_room: Optional[str] = None
     pos_xyz: Optional[Tuple[float, float, float]] = None
 
+    # presence (social continuity without coupling)
+    presence: List[str] = field(default_factory=list)
+
+    # touch vector (somatic scaffold)
+    touch_vector: Dict[str, float] = field(default_factory=dict)  # {"region":..., "pressure":..., "temp":..., "duration_s":...}
+
     # body snapshot
     body: Dict[str, float] = field(default_factory=dict)
 
-    # transaction recording (for social contacts)
-    transaction: Dict[str, str] = field(default_factory=dict)  # { "target": "A7DO", "outcome": "cried" }
+    # transaction
+    transaction: Dict[str, str] = field(default_factory=dict)
 
     def prompt(self) -> str:
         parts = [self.agent, self.action]
