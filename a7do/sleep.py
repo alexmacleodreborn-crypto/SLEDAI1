@@ -17,15 +17,12 @@ class SleepEngine:
                 o = f"obj:{ev.obj}"
                 edges[(a, o)] += 1
                 edges[(o, p)] += 1
-            if ev.to_place_id:
-                tp = f"place:{ev.to_place_id}"
-                edges[(p, tp)] += 1
-            if ev.transaction:
-                edges[(f"tx:{ev.agent}", f"tx:{ev.transaction.get('outcome','')}")] += 1
+            for pr in getattr(ev, "presence", []) or []:
+                edges[(a, f"present:{pr}")] += 1
 
         top = sorted(edges.items(), key=lambda kv: kv[1], reverse=True)[:20]
         return {
             "replayed_count": len(recent),
             "top_edges": [{"a": k[0], "b": k[1], "w": v} for k, v in top],
-            "note": "Replay reinforces co-occurrence; no abstraction."
+            "note": "Replay reinforces co-occurrence only."
         }
