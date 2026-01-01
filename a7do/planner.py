@@ -1,148 +1,262 @@
-from typing import Dict, Any, List
-from collections import defaultdict
-from a7do.sleep import SleepEngine
+import random
+from typing import List
+from a7do.events import ExperienceEvent
 
-class A7DOMind:
-    """
-    Non-aware learner:
-    - event memory
-    - lexicon exposure
-    - association edges
-    - transaction recording
-    - coherence gating
-    """
-    def __init__(self, world_map, profiles, schedule):
-        self.world = world_map
-        self.profiles = profiles
-        self.schedule = schedule
+def _pos(rng, base):
+    bx, by, bz = base
+    return (round(bx + rng.uniform(-0.5, 0.5), 2), round(by + rng.uniform(-0.5, 0.5), 2), round(bz + rng.uniform(0.0, 0.5), 2))
 
-        self.memory: List[Any] = []
-        self.lexicon: Dict[str, int] = {}
-        self.edges = defaultdict(int)
-        self.trace: List[Dict[str, Any]] = []
+def birth_sequence(world, schedule, mum="Mum", dad="Dad") -> List[ExperienceEvent]:
+    rng = random.Random(world.seed + 100)
+    schedule.body.tick_awake()
+    base = world.places["hospital_cwh"].pos_xyz
 
-        self.sleep_engine = SleepEngine()
-        self.last_coherence = None
-        self.last_sleep = None
-        self.last_action = None
+    evs = []
 
-    def _inc(self, token: str):
-        t = (token or "").strip().lower()
-        if not t:
-            return
-        self.lexicon[t] = self.lexicon.get(t, 0) + 1
+    # Sensory imprint cluster
+    evs.append(ExperienceEvent(
+        place_id="hospital_cwh", room="delivery_room",
+        agent="Nurse", action="checked", obj="health",
+        narrator="Health checks under bright lights",
+        sound={"pattern": "voices echo", "volume": "medium"},
+        smell={"pattern": "clean chemical"},
+        touch={"pattern": "gentle hands", "temp": "cool"},
+        motor={"type": "newborn", "intensity": "low"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
 
-    def coherence_check(self, ev) -> Dict[str, Any]:
-        issues = []
+    # Cry signal
+    cry = schedule.body.cry_level()
+    if cry > 0.65:
+        evs.append(ExperienceEvent(
+            place_id="hospital_cwh", room="delivery_room",
+            agent="A7DO", action="cried", obj=None,
+            narrator="Newborn cry in response to discomfort",
+            sound={"pattern": "cry", "volume": "loud"},
+            touch={"pattern": "air cool"},
+            motor={"type": "wiggle", "intensity": "high"},
+            pos_xyz=_pos(rng, base),
+            body=schedule.body.snapshot(),
+            transaction={"target": "A7DO", "outcome": "cried"}
+        ))
 
-        if ev.place_id not in self.world.places:
-            issues.append(f"unknown_place:{ev.place_id}")
-        else:
-            place = self.world.places[ev.place_id]
-            if place.kind in ("hospital", "house") and ev.room not in place.rooms:
-                issues.append(f"unknown_room:{ev.room}")
+    # Mum contact (pattern)
+    evs.append(ExperienceEvent(
+        place_id="hospital_cwh", room="delivery_room",
+        agent=mum, action="held", obj="you",
+        narrator="Mum voice + smell imprint",
+        sound={"pattern": "soft voice", "volume": "soft"},
+        smell={"pattern": "warm skin"},
+        touch={"pattern": "soft cloth", "temp": "warm"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
 
-        # agent can be A7DO or in profiles
-        agent_ok = (ev.agent == "A7DO") or (ev.agent in self.profiles.people) or (ev.agent in self.profiles.animals)
-        if not agent_ok:
-            issues.append(f"unknown_agent:{ev.agent}")
+    # Dad contact (different pattern)
+    evs.append(ExperienceEvent(
+        place_id="hospital_cwh", room="delivery_room",
+        agent=dad, action="spoke", obj="hello",
+        narrator="Dad voice + irregular cough/sneeze nearby",
+        sound={"pattern": "deep voice + cough", "volume": "medium"},
+        smell={"pattern": "outdoor air"},
+        touch={"pattern": "firm hold", "temp": "warm"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
 
-        # object can be None, speech token, or a profile object/animal/person name
-        if ev.obj:
-            ok = (ev.obj in self.profiles.objects) or (ev.obj in self.profiles.animals) or (ev.obj in self.profiles.people)
-            # allow simple speech tokens like "hello", "home", "ball" (tracked by lexicon)
-            if not ok and len(ev.obj) > 0:
-                # do NOT block; flag as floating token
-                issues.append(f"floating_token:{ev.obj}")
+    # Context seeding (street names as floating tokens)
+    evs.append(ExperienceEvent(
+        place_id="hospital_cwh", room="delivery_room",
+        agent=mum, action="said", obj="Hospital Street",
+        narrator="Parent mentions hospital street",
+        sound={"pattern": "soft voice"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
 
-        score = 1.0 if not issues else max(0.0, 1.0 - 0.2 * len(issues))
-        return {"score": round(score, 2), "issues": issues}
+    return evs
 
-    def ingest(self, ev) -> Dict[str, Any]:
-        coh = self.coherence_check(ev)
-        self.last_coherence = coh
+def drive_home_sequence(world, schedule, mum="Mum", dad="Dad") -> List[ExperienceEvent]:
+    rng = random.Random(world.seed + 200)
+    schedule.body.tick_awake()
 
-        if coh["score"] <= 0.2:
-            self.last_action = "blocked"
-            self.trace.append({"phase": "blocked", "prompt": ev.prompt(), "coherence": coh})
-            return {"ok": False, "blocked": True, "coherence": coh}
+    base = world.places["hospital_cwh"].pos_xyz
+    park = world.places["park_01"].pos_xyz
+    shops = world.places["shops_01"].pos_xyz
+    home_st = world.places["street_home"].pos_xyz
 
-        # apply movement
-        if ev.to_place_id:
-            self.schedule.spatial.place_id = ev.to_place_id
-        if ev.to_room:
-            self.schedule.spatial.room = ev.to_room
-        if ev.pos_xyz:
-            self.schedule.spatial.pos_xyz = ev.pos_xyz
-        if ev.motor.get("type"):
-            self.schedule.spatial.locomotion = ev.motor.get("type")
+    evs = []
 
-        # store memory
-        self.memory.append(ev)
+    # leaving hospital (movement)
+    evs.append(ExperienceEvent(
+        place_id="hospital_cwh", room="delivery_room",
+        agent=dad, action="carried", obj="you",
+        narrator="Leaving hospital; movement begins",
+        motor={"type": "carried", "intensity": "steady"},
+        to_place_id="park_01",
+        to_room="",
+        pos_xyz=_pos(rng, park),
+        sound={"pattern": "doors", "volume": "medium"},
+        body=schedule.body.snapshot()
+    ))
 
-        # lexicon exposure
-        self._inc(ev.place_id)
-        self._inc(ev.room)
-        self._inc(ev.agent)
-        self._inc(ev.action)
-        if ev.obj:
-            self._inc(ev.obj)
-        for w in ev.emphasis:
-            self._inc(w)
-        if ev.sound: self._inc("sound")
-        if ev.smell: self._inc("smell")
-        if ev.touch: self._inc("touch")
-        if ev.motor: self._inc("motor")
+    # pass park (speech + motion)
+    evs.append(ExperienceEvent(
+        place_id="park_01", room="",
+        agent=mum, action="said", obj="Park Lane",
+        narrator="Passing park; parent mentions park street",
+        sound={"pattern": "car hum", "volume": "low"},
+        motor={"type": "car", "intensity": "steady"},
+        to_place_id="shops_01",
+        pos_xyz=_pos(rng, shops),
+        body=schedule.body.snapshot()
+    ))
 
-        # association edges
-        a = f"agent:{ev.agent}"
-        p = f"place:{ev.place_id}"
-        r = f"room:{ev.room}"
-        self.edges[(a, p)] += 1
-        self.edges[(a, r)] += 1
-        self.edges[(p, r)] += 1
-        if ev.obj:
-            o = f"obj:{ev.obj}"
-            self.edges[(a, o)] += 1
-            self.edges[(o, p)] += 1
-        if ev.to_place_id:
-            tp = f"place:{ev.to_place_id}"
-            self.edges[(p, tp)] += 1
+    # pass shops
+    evs.append(ExperienceEvent(
+        place_id="shops_01", room="",
+        agent=dad, action="said", obj="Market Road",
+        narrator="Passing shops; parent mentions shops street",
+        sound={"pattern": "traffic", "volume": "medium"},
+        smell={"pattern": "food"},
+        motor={"type": "car", "intensity": "steady"},
+        to_place_id="street_home",
+        pos_xyz=_pos(rng, home_st),
+        body=schedule.body.snapshot()
+    ))
 
-        # transaction logging for social
-        if ev.transaction and ev.transaction.get("target") == "A7DO":
-            outcome = ev.transaction.get("outcome", "calm")
-            self.profiles.set_interaction(ev.agent, outcome=outcome, day=self.schedule.day)
+    # approach home street
+    evs.append(ExperienceEvent(
+        place_id="street_home", room="",
+        agent=mum, action="said", obj="Home Street",
+        narrator="Arriving near home street",
+        sound={"pattern": "car slow", "volume": "low"},
+        motor={"type": "car", "intensity": "low"},
+        body=schedule.body.snapshot()
+    ))
 
-        self.last_action = f"experience:{ev.place_id}/{ev.room}"
-        self.trace.append({
-            "phase": "experience",
-            "prompt": ev.prompt(),
-            "event": {
-                "place_id": ev.place_id,
-                "room": ev.room,
-                "agent": ev.agent,
-                "action": ev.action,
-                "obj": ev.obj,
-                "emphasis": ev.emphasis,
-                "sound": ev.sound,
-                "smell": ev.smell,
-                "touch": ev.touch,
-                "motor": ev.motor,
-                "to_place_id": ev.to_place_id,
-                "to_room": ev.to_room,
-                "pos_xyz": ev.pos_xyz,
-                "body": ev.body,
-                "transaction": ev.transaction,
-                "narrator": ev.narrator,
-            },
-            "coherence": coh
-        })
-        return {"ok": True, "coherence": coh}
+    return evs
 
-    def sleep(self) -> Dict[str, Any]:
-        rep = self.sleep_engine.replay(self.memory)
-        self.last_sleep = rep
-        self.trace.append({"phase": "sleep", "report": rep})
-        self.last_action = "sleep"
-        return rep
+def arrive_home_sequence(world, schedule, mum="Mum", dad="Dad", sister_name="Sister") -> List[ExperienceEvent]:
+    rng = random.Random(world.seed + 300)
+    schedule.body.tick_awake()
+
+    home = world.places["house_a7do"]
+    base = home.pos_xyz
+
+    evs = []
+
+    # home declaration (anchoring)
+    evs.append(ExperienceEvent(
+        place_id="house_a7do", room="hall",
+        agent=dad, action="said", obj="this is our home",
+        narrator="Home anchored + described",
+        emphasis=["home"],
+        sound={"pattern": "calm voice", "volume": "soft"},
+        smell={"pattern": "house neutral"},
+        motor={"type": "carried", "intensity": "low"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
+
+    # door colour + levels + gardens
+    evs.append(ExperienceEvent(
+        place_id="house_a7do", room="hall",
+        agent=mum, action="said", obj="blue door",
+        narrator="Door colour described",
+        emphasis=["blue"],
+        sound={"pattern": "soft voice"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
+    evs.append(ExperienceEvent(
+        place_id="house_a7do", room="hall",
+        agent=mum, action="said", obj="two levels",
+        narrator="Levels described",
+        emphasis=["upstairs"],
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
+
+    # sister introduction
+    evs.append(ExperienceEvent(
+        place_id="house_a7do", room="living_room",
+        agent=sister_name, action="spoke", obj="hi",
+        narrator="Sister appears; voice pattern begins",
+        sound={"pattern": "small voice", "volume": "soft"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot(),
+        transaction={"target": "A7DO", "outcome": "calm"}
+    ))
+
+    # pet mention -> pet appears later; keep as floating token here
+    evs.append(ExperienceEvent(
+        place_id="house_a7do", room="living_room",
+        agent=dad, action="said", obj="Xena",
+        narrator="Pet name exposed before full grounding",
+        sound={"pattern": "excited voice", "volume": "medium"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
+
+    return evs
+
+def neighbourhood_meeting_sequence(world, profiles, schedule, doors: List[str]) -> List[ExperienceEvent]:
+    rng = random.Random(world.seed + 400 + schedule.day)
+    schedule.body.tick_awake()
+
+    evs = []
+    base = world.places["house_a7do"].pos_xyz
+
+    # Ambient street noise first (no entities)
+    evs.append(ExperienceEvent(
+        place_id="house_a7do", room="hall",
+        agent="Street", action="sounded", obj="neighbours",
+        narrator="Background doors, distant voices, dogs, cars",
+        sound={"pattern": "distant voices + doors", "volume": "low"},
+        pos_xyz=_pos(rng, base),
+        body=schedule.body.snapshot()
+    ))
+
+    # Introductions: a subset per meeting to avoid overload
+    sample_doors = rng.sample(doors, k=min(6, len(doors)))
+
+    for door in sample_doors:
+        fam = profiles.neighbour_families.get(door, {})
+        # choose one representative adult to introduce
+        speaker = fam.get("mum") or fam.get("dad") or fam.get("stepdad") or "Neighbour"
+        if speaker not in profiles.people:
+            continue
+
+        # A7DO reaction: if body cry is high, more likely cry
+        cry = schedule.body.cry_level()
+        outcome = "cried" if cry > 0.75 and rng.random() < 0.7 else "calm"
+
+        # greeting event
+        evs.append(ExperienceEvent(
+            place_id="house_a7do", room="living_room",
+            agent=speaker, action="said", obj=f"my name is {speaker}",
+            narrator=f"Neighbour from door {door} introduces self; door colour {world.places.get('house_n_'+door).meta.get('door_colour','') if ('house_n_'+door) in world.places else ''}",
+            sound={"pattern": "hello voice", "volume": "medium"},
+            smell={"pattern": "perfume" if rng.random() < 0.5 else "outdoor"},
+            touch={"pattern": "cuddle" if rng.random() < 0.5 else "pat"},
+            pos_xyz=_pos(rng, base),
+            body=schedule.body.snapshot(),
+            transaction={"target": "A7DO", "outcome": outcome}
+        ))
+
+        # if cried, parent soothes
+        if outcome == "cried":
+            schedule.body.feed()  # calming proxy
+            evs.append(ExperienceEvent(
+                place_id="house_a7do", room="living_room",
+                agent="Mum", action="soothed", obj="shh",
+                narrator="Parent soothes after cry",
+                sound={"pattern": "shush", "volume": "soft"},
+                touch={"pattern": "rocking", "temp": "warm"},
+                pos_xyz=_pos(rng, base),
+                body=schedule.body.snapshot()
+            ))
+
+    return evs
