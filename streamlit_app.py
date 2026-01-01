@@ -1,14 +1,8 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
 import streamlit as st
 
+st.set_page_config(page_title="A7DO", layout="wide")
 
 st.title("🧠 A7DO — World Cage & Experiment Runner")
+st.caption("Use the left sidebar Pages to navigate. World is Observer-defined; A7DO learns only through authorised events.")
 
-st.markdown("""
-This app is **Observer-led**.  
-A7DO only learns through **authorised schedules** (events), never direct story belief.
-""")
-
-st.info("Use the Pages menu: 0_World_Cage → 1_World_Profile → 3_Run_Experiment → 2_Observer")
+st.info("Start here: 0_World_Cage → 1_World_Profile → 3_Run_Experiment → 2_Observer")
