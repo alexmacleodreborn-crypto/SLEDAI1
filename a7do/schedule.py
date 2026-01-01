@@ -24,9 +24,10 @@ class Schedule:
         self.state = "waiting"
         self.spatial.place_id = start_place
         self.spatial.room = start_room
+        if start_place and start_place != self.spatial.place_id:
+            self.spatial.place_id = start_place
 
     def authorise_wake(self):
-        # only allowed wake point is hospital centre
         if self.day == 0 and self.spatial.place_id != "hospital_cwh":
             self.spatial.place_id = "hospital_cwh"
             self.spatial.room = "delivery_room"
