@@ -1,31 +1,31 @@
 from collections import defaultdict
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 class SleepEngine:
-    """
-    Replay + reinforcement stats only (observer-visible).
-    """
-    def replay(self, memory_events) -> Dict[str, Any]:
-        recent = memory_events[-10:]
-        edge = defaultdict(int)
+    def replay(self, events: List[Any]) -> Dict[str, Any]:
+        recent = events[-12:]
+        edges = defaultdict(int)
 
         for ev in recent:
-            r = f"room:{ev.room}"
             a = f"agent:{ev.agent}"
-            edge[(a, r)] += 1
+            p = f"place:{ev.place_id}"
+            r = f"room:{ev.room}"
+            edges[(a, p)] += 1
+            edges[(a, r)] += 1
+            edges[(p, r)] += 1
             if ev.obj:
                 o = f"obj:{ev.obj}"
-                edge[(o, r)] += 1
-                edge[(a, o)] += 1
-            if ev.to_room:
-                tr = f"room:{ev.to_room}"
-                edge[(r, tr)] += 1
+                edges[(a, o)] += 1
+                edges[(o, p)] += 1
+            if ev.to_place_id:
+                tp = f"place:{ev.to_place_id}"
+                edges[(p, tp)] += 1
+            if ev.transaction:
+                edges[(f"tx:{ev.agent}", f"tx:{ev.transaction.get('outcome','')}")] += 1
 
-        top = sorted(edge.items(), key=lambda x: x[1], reverse=True)[:15]
-        top_edges = [{"a": k[0], "b": k[1], "w": v} for k, v in top]
-
+        top = sorted(edges.items(), key=lambda kv: kv[1], reverse=True)[:20]
         return {
             "replayed_count": len(recent),
-            "top_edges": top_edges,
-            "note": "No abstraction. Reinforcement stats only."
+            "top_edges": [{"a": k[0], "b": k[1], "w": v} for k, v in top],
+            "note": "Replay reinforces co-occurrence; no abstraction."
         }
