@@ -1,119 +1,148 @@
-import random
-from typing import Dict, List
-from a7do.events import ExperienceEvent
+from typing import Dict, Any, List
+from collections import defaultdict
+from a7do.sleep import SleepEngine
 
-def _rand_pos(rng):
-    return (round(rng.uniform(0.2, 0.8), 2), round(rng.uniform(0.2, 0.8), 2))
+class A7DOMind:
+    """
+    Non-aware learner:
+    - event memory
+    - lexicon exposure
+    - association edges
+    - transaction recording
+    - coherence gating
+    """
+    def __init__(self, world_map, profiles, schedule):
+        self.world = world_map
+        self.profiles = profiles
+        self.schedule = schedule
 
-def make_parent_knowledge(seed: int) -> List[str]:
-    rng = random.Random(seed)
-    facts = [
-        "tools go in the toolbox",
-        "food is in the kitchen",
-        "bathroom is for washing",
-        "park has swings",
-        "dogs can bark",
-        "balls can roll",
-        "bed is for sleeping",
-        "street connects houses",
-        "windows let in light",
-        "rain makes things wet",
-    ]
-    rng.shuffle(facts)
-    return facts[:4]
+        self.memory: List[Any] = []
+        self.lexicon: Dict[str, int] = {}
+        self.edges = defaultdict(int)
+        self.trace: List[Dict[str, Any]] = []
 
-def generate_day(world_map, profiles, schedule, day: int, seed: int = 11) -> List[ExperienceEvent]:
-    rng = random.Random(seed + day)
+        self.sleep_engine = SleepEngine()
+        self.last_coherence = None
+        self.last_sleep = None
+        self.last_action = None
 
-    # parents
-    mum = next((p.name for p in profiles.people.values() if p.role.lower() == "mum"), None)
-    dad = next((p.name for p in profiles.people.values() if p.role.lower() == "dad"), None)
-    if not mum or not dad:
-        return []
+    def _inc(self, token: str):
+        t = (token or "").strip().lower()
+        if not t:
+            return
+        self.lexicon[t] = self.lexicon.get(t, 0) + 1
 
-    # default objects / animals if exist
-    ball = "ball" if "ball" in profiles.objects else None
-    dog = next(iter(profiles.animals.keys()), None)
+    def coherence_check(self, ev) -> Dict[str, Any]:
+        issues = []
 
-    # Body tick → may cause a cry event
-    schedule.body.tick_awake()
-    cry = schedule.body.cry_level()
+        if ev.place_id not in self.world.places:
+            issues.append(f"unknown_place:{ev.place_id}")
+        else:
+            place = self.world.places[ev.place_id]
+            if place.kind in ("hospital", "house") and ev.room not in place.rooms:
+                issues.append(f"unknown_room:{ev.room}")
 
-    evs: List[ExperienceEvent] = []
+        # agent can be A7DO or in profiles
+        agent_ok = (ev.agent == "A7DO") or (ev.agent in self.profiles.people) or (ev.agent in self.profiles.animals)
+        if not agent_ok:
+            issues.append(f"unknown_agent:{ev.agent}")
 
-    # Wake event always
-    evs.append(ExperienceEvent(
-        building="House_A7DO", room="bedroom_child",
-        agent=mum, action="said", obj="hello",
-        emphasis=["hello"],
-        sound={"source": mum, "pattern": "soft voice", "volume": "soft"},
-        motor={"type": "still", "intensity": "low"},
-        pos_xy=_rand_pos(rng),
-        body=schedule.body.snapshot()
-    ))
+        # object can be None, speech token, or a profile object/animal/person name
+        if ev.obj:
+            ok = (ev.obj in self.profiles.objects) or (ev.obj in self.profiles.animals) or (ev.obj in self.profiles.people)
+            # allow simple speech tokens like "hello", "home", "ball" (tracked by lexicon)
+            if not ok and len(ev.obj) > 0:
+                # do NOT block; flag as floating token
+                issues.append(f"floating_token:{ev.obj}")
 
-    # Biological crying event if high
-    if cry > 0.75:
-        evs.append(ExperienceEvent(
-            building="House_A7DO", room="bedroom_child",
-            agent="A7DO", action="cried", obj=None,
-            emphasis=["cry"],
-            sound={"source": "A7DO", "pattern": "cry", "volume": "loud"},
-            motor={"type": "wiggle", "intensity": "high"},
-            pos_xy=_rand_pos(rng),
-            body=schedule.body.snapshot()
-        ))
-        # Dad responds: feed
-        schedule.body.feed()
-        evs.append(ExperienceEvent(
-            building="House_A7DO", room="bedroom_child",
-            agent=dad, action="fed", obj="milk",
-            emphasis=["milk"],
-            sound={"source": dad, "pattern": "shush", "volume": "soft"},
-            pos_xy=_rand_pos(rng),
-            body=schedule.body.snapshot()
-        ))
+        score = 1.0 if not issues else max(0.0, 1.0 - 0.2 * len(issues))
+        return {"score": round(score, 2), "issues": issues}
 
-    # Movement: bedroom -> hall
-    evs.append(ExperienceEvent(
-        building="House_A7DO", room="bedroom_child",
-        agent=dad, action="carried", obj="you",
-        emphasis=["hall"],
-        motor={"type": "carried", "intensity": "steady"},
-        to_room="hall",
-        pos_xy=_rand_pos(rng),
-        body=schedule.body.snapshot()
-    ))
+    def ingest(self, ev) -> Dict[str, Any]:
+        coh = self.coherence_check(ev)
+        self.last_coherence = coh
 
-    # Ball learning event: situated + emphasis
-    if ball:
-        evs.append(ExperienceEvent(
-            building="House_A7DO", room="living_room",
-            agent=dad, action="rolled", obj=ball,
-            emphasis=["ball", "BALL"],
-            sound={"source": dad, "pattern": "clap", "volume": "soft"},
-            motor={"type": "crawl", "intensity": "slow"},
-            pos_xy=_rand_pos(rng),
-            body=schedule.body.snapshot()
-        ))
-        evs.append(ExperienceEvent(
-            building="House_A7DO", room="living_room",
-            agent=dad, action="said", obj="catch",
-            emphasis=["catch", "ball"],
-            pos_xy=_rand_pos(rng),
-            body=schedule.body.snapshot()
-        ))
+        if coh["score"] <= 0.2:
+            self.last_action = "blocked"
+            self.trace.append({"phase": "blocked", "prompt": ev.prompt(), "coherence": coh})
+            return {"ok": False, "blocked": True, "coherence": coh}
 
-    # Dog intro on Day 1
-    if day >= 1 and dog:
-        evs.append(ExperienceEvent(
-            building="House_A7DO", room="kitchen",
-            agent=mum, action="showed", obj=dog,
-            emphasis=[dog],
-            sound={"source": dog, "pattern": "bark", "volume": "low"},
-            pos_xy=_rand_pos(rng),
-            body=schedule.body.snapshot()
-        ))
+        # apply movement
+        if ev.to_place_id:
+            self.schedule.spatial.place_id = ev.to_place_id
+        if ev.to_room:
+            self.schedule.spatial.room = ev.to_room
+        if ev.pos_xyz:
+            self.schedule.spatial.pos_xyz = ev.pos_xyz
+        if ev.motor.get("type"):
+            self.schedule.spatial.locomotion = ev.motor.get("type")
 
-    # Cap infant dose
-    return evs[:8]
+        # store memory
+        self.memory.append(ev)
+
+        # lexicon exposure
+        self._inc(ev.place_id)
+        self._inc(ev.room)
+        self._inc(ev.agent)
+        self._inc(ev.action)
+        if ev.obj:
+            self._inc(ev.obj)
+        for w in ev.emphasis:
+            self._inc(w)
+        if ev.sound: self._inc("sound")
+        if ev.smell: self._inc("smell")
+        if ev.touch: self._inc("touch")
+        if ev.motor: self._inc("motor")
+
+        # association edges
+        a = f"agent:{ev.agent}"
+        p = f"place:{ev.place_id}"
+        r = f"room:{ev.room}"
+        self.edges[(a, p)] += 1
+        self.edges[(a, r)] += 1
+        self.edges[(p, r)] += 1
+        if ev.obj:
+            o = f"obj:{ev.obj}"
+            self.edges[(a, o)] += 1
+            self.edges[(o, p)] += 1
+        if ev.to_place_id:
+            tp = f"place:{ev.to_place_id}"
+            self.edges[(p, tp)] += 1
+
+        # transaction logging for social
+        if ev.transaction and ev.transaction.get("target") == "A7DO":
+            outcome = ev.transaction.get("outcome", "calm")
+            self.profiles.set_interaction(ev.agent, outcome=outcome, day=self.schedule.day)
+
+        self.last_action = f"experience:{ev.place_id}/{ev.room}"
+        self.trace.append({
+            "phase": "experience",
+            "prompt": ev.prompt(),
+            "event": {
+                "place_id": ev.place_id,
+                "room": ev.room,
+                "agent": ev.agent,
+                "action": ev.action,
+                "obj": ev.obj,
+                "emphasis": ev.emphasis,
+                "sound": ev.sound,
+                "smell": ev.smell,
+                "touch": ev.touch,
+                "motor": ev.motor,
+                "to_place_id": ev.to_place_id,
+                "to_room": ev.to_room,
+                "pos_xyz": ev.pos_xyz,
+                "body": ev.body,
+                "transaction": ev.transaction,
+                "narrator": ev.narrator,
+            },
+            "coherence": coh
+        })
+        return {"ok": True, "coherence": coh}
+
+    def sleep(self) -> Dict[str, Any]:
+        rep = self.sleep_engine.replay(self.memory)
+        self.last_sleep = rep
+        self.trace.append({"phase": "sleep", "report": rep})
+        self.last_action = "sleep"
+        return rep
