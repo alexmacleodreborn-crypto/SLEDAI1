@@ -1,11 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import random
-import uuid
-
-# ---------------------------
-# Core Profiles
-# ---------------------------
 
 @dataclass
 class PersonProfile:
@@ -37,55 +32,31 @@ class ObjectProfile:
     colour: Optional[str] = None
     shape: Optional[str] = None
     affordances: List[str] = field(default_factory=list)
-    container_of: Optional[str] = None  # toolbox contains tool etc.
+    container_of: Optional[str] = None
 
 @dataclass
 class InteractionRecord:
     person_name: str
-    last_outcome: str  # calm | cried | reached | withdrew
+    last_outcome: str
     last_day: int
+    encounter_count: int = 0
     notes: List[str] = field(default_factory=list)
-
-# ---------------------------
-# Registry
-# ---------------------------
 
 class WorldProfiles:
     """
-    Observer-defined truth (allowed reality).
-    A7DO experiences it; does not invent it.
+    Observer-defined entities (allowed reality).
     """
     def __init__(self):
         self.people: Dict[str, PersonProfile] = {}
         self.animals: Dict[str, AnimalProfile] = {}
         self.objects: Dict[str, ObjectProfile] = {}
-
-        # background knowledge for planner only (parents)
         self.parent_knowledge: Dict[str, List[str]] = {}
-
-        # interaction memory (transaction log) keyed by person
         self.interactions: Dict[str, InteractionRecord] = {}
-
-        # mapping door->family ids for neighbours
         self.neighbour_families: Dict[str, Dict[str, str]] = {}
 
     def has_parents(self) -> bool:
         roles = {p.role.lower() for p in self.people.values()}
         return ("mum" in roles) and ("dad" in roles)
-
-    def snapshot(self):
-        return {
-            "people": {k: {"role": v.role, "age": v.age, "hair": v.hair, "eyes": v.eyes, "relationships": v.relationships} for k, v in self.people.items()},
-            "animals": {k: {"species": v.species, "owner": v.owner} for k, v in self.animals.items()},
-            "objects": {k: {"category": v.category, "colour": v.colour, "shape": v.shape, "affordances": v.affordances} for k, v in self.objects.items()},
-            "parent_knowledge_keys": list(self.parent_knowledge.keys()),
-            "interactions": {k: {"last_outcome": v.last_outcome, "last_day": v.last_day} for k, v in self.interactions.items()},
-            "neighbour_families_count": len(self.neighbour_families),
-        }
-
-    # ---------------------------
-    # Relationships
-    # ---------------------------
 
     def assign_pet(self, pet_name: str, owner_name: str):
         if pet_name in self.animals and owner_name in self.people:
@@ -94,11 +65,15 @@ class WorldProfiles:
 
     def set_interaction(self, person_name: str, outcome: str, day: int, notes: Optional[List[str]] = None):
         notes = notes or []
-        self.interactions[person_name] = InteractionRecord(person_name=person_name, last_outcome=outcome, last_day=day, notes=notes)
-
-    # ---------------------------
-    # Neighbour generator
-    # ---------------------------
+        rec = self.interactions.get(person_name)
+        if rec is None:
+            rec = InteractionRecord(person_name=person_name, last_outcome=outcome, last_day=day, encounter_count=1, notes=notes)
+        else:
+            rec.last_outcome = outcome
+            rec.last_day = day
+            rec.encounter_count += 1
+            rec.notes.extend(notes)
+        self.interactions[person_name] = rec
 
     def generate_neighbours(self, seed: int, door_numbers: List[str]):
         rng = random.Random(seed)
@@ -108,7 +83,6 @@ class WorldProfiles:
         hair = ["brown", "blonde", "black", "red", "grey"]
         eyes = ["blue", "green", "brown", "hazel"]
 
-        # pick 3 special families: single mum, single dad, blended
         specials = rng.sample(door_numbers, k=min(3, len(door_numbers)))
         special_map = {}
         if len(specials) >= 1: special_map[specials[0]] = "single_mum"
@@ -126,7 +100,6 @@ class WorldProfiles:
             fam = {"style": style}
 
             if style == "single_mum":
-                # mum + two kids; dad exists as concept but not present
                 self.people[mum_name] = PersonProfile(mum_name, "neighbour_mum", rng.randint(24, 45), rng.choice(hair), rng.choice(eyes), ["tired smile"])
                 self.people[c1] = PersonProfile(c1, "neighbour_child", rng.randint(4, 10), rng.choice(hair), rng.choice(eyes), [])
                 self.people[c2] = PersonProfile(c2, "neighbour_child", rng.randint(4, 10), rng.choice(hair), rng.choice(eyes), [])
@@ -139,7 +112,6 @@ class WorldProfiles:
                 fam.update({"dad": dad_name, "mum": "unknown_mum_card", "child1": c1, "child2": c2})
 
             elif style == "blended":
-                # step dad + mum + bio dad exists elsewhere; one child from mum, one from dad
                 step_dad = f"{rng.choice(first_names_m)}_{door}_StepDad"
                 bio_dad = f"{rng.choice(first_names_m)}_{door}_BioDad"
                 self.people[mum_name] = PersonProfile(mum_name, "neighbour_mum", rng.randint(24, 45), rng.choice(hair), rng.choice(eyes), ["confident"])
@@ -156,3 +128,12 @@ class WorldProfiles:
                 fam.update({"dad": dad_name, "mum": mum_name, "child1": c1, "child2": c2})
 
             self.neighbour_families[door] = fam
+
+    def snapshot(self):
+        return {
+            "people": {k: {"role": v.role, "age": v.age, "hair": v.hair, "eyes": v.eyes, "relationships": v.relationships} for k, v in self.people.items()},
+            "animals": {k: {"species": v.species, "owner": v.owner} for k, v in self.animals.items()},
+            "objects": {k: {"category": v.category, "colour": v.colour, "shape": v.shape, "affordances": v.affordances} for k, v in self.objects.items()},
+            "interactions": {k: {"last_outcome": v.last_outcome, "last_day": v.last_day, "encounters": v.encounter_count} for k, v in self.interactions.items()},
+            "neighbour_families_count": len(self.neighbour_families),
+        }
