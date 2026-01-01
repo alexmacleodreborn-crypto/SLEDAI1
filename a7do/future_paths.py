@@ -1,42 +1,62 @@
-import random
+# a7do/future_paths.py
+from dataclasses import dataclass, field
+from typing import Dict, Any, List, Optional
+import uuid
+import time
 
-def propose_paths(bot_name: str, registry, world, profiles, mind):
-    rng = random.Random(world.seed + len(mind.memory) + 777)
 
-    ball_seen = mind.lexicon.get("ball", 0)
-    cry = mind.schedule.body.cry_level()
+@dataclass
+class FuturePath:
+    path_id: str
+    type: str                 # place | person | object | routine
+    proposal: Dict[str, Any]
+    unlock: Dict[str, Any]
+    priority: float = 0.5
+    novelty_cost: float = 0.3
+    status: str = "proposed"  # proposed | approved | scheduled | experienced
+    created_at: float = field(default_factory=time.time)
+    notes: List[str] = field(default_factory=list)
 
-    if ball_seen < 3:
-        registry.propose(
-            type="object",
-            proposal={"name": "ball", "category": "toy", "colour": "red", "shape": "round", "affordances": ["roll", "catch"]},
-            unlock={"min_lexicon": {"ball": 1}, "max_cry": 0.9},
-            priority=0.8,
-            novelty_cost=0.2,
-            notes=[f"{bot_name}: reinforce early toy grounding"]
+
+class FuturePathRegistry:
+    def __init__(self):
+        self.paths: Dict[str, FuturePath] = {}
+
+    def propose(
+        self,
+        type: str,
+        proposal: Dict[str, Any],
+        unlock: Dict[str, Any],
+        priority: float = 0.5,
+        novelty_cost: float = 0.3,
+        notes: Optional[List[str]] = None,
+    ) -> str:
+        pid = str(uuid.uuid4())[:8]
+        self.paths[pid] = FuturePath(
+            path_id=pid,
+            type=type,
+            proposal=proposal,
+            unlock=unlock,
+            priority=priority,
+            novelty_cost=novelty_cost,
+            notes=notes or [],
         )
+        return pid
 
-    if cry < 0.8:
-        registry.propose(
-            type="routine",
-            proposal={"name": "short_walk_to_park", "from": "house_a7do", "to": "park_01"},
-            unlock={"min_day": 1, "max_cry": 0.8},
-            priority=0.6,
-            novelty_cost=0.4,
-            notes=[f"{bot_name}: introduce park sensory"]
-        )
+    def list(self, status: Optional[str] = None) -> List[FuturePath]:
+        items = list(self.paths.values())
+        if status:
+            items = [p for p in items if p.status == status]
+        return sorted(items, key=lambda p: (-p.priority, p.created_at))
 
-    doors = list(profiles.neighbour_families.keys())
-    if doors:
-        d = rng.choice(doors)
-        fam = profiles.neighbour_families.get(d, {})
-        speaker = fam.get("mum") or fam.get("dad") or fam.get("stepdad")
-        if speaker:
-            registry.propose(
-                type="person",
-                proposal={"name": speaker, "door": d, "context": "neighbour_meeting"},
-                unlock={"min_day": 1},
-                priority=0.5,
-                novelty_cost=0.3,
-                notes=[f"{bot_name}: expand social continuity"]
-            )
+    def approve(self, path_id: str):
+        if path_id in self.paths:
+            self.paths[path_id].status = "approved"
+
+    def mark_scheduled(self, path_id: str):
+        if path_id in self.paths:
+            self.paths[path_id].status = "scheduled"
+
+    def mark_experienced(self, path_id: str):
+        if path_id in self.paths:
+            self.paths[path_id].status = "experienced"
