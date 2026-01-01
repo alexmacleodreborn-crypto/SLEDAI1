@@ -3,7 +3,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
 
-st.set_page_config(page_title="A7DO — World Cage", layout="wide")
+
 st.title("🧠 A7DO — World Cage & Experiment Runner")
 
 st.markdown("""
