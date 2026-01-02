@@ -1,4 +1,3 @@
-# a7do_core/events.py
 from dataclasses import dataclass
 from typing import Dict, List
 
@@ -6,18 +5,11 @@ from typing import Dict, List
 @dataclass
 class ExperienceEvent:
     """
-    A single unit of lived experience.
+    A single unit of lived experience (observer-supplied).
+    No meaning is inferred from these fields.
     """
-    kind: str                 # e.g. 'birth', 'care', 'travel', 'play'
+    kind: str                 # e.g. 'birth', 'care', 'travel', 'play', 'experience'
     day: int
     place: str
     duration: float           # simulated duration (arbitrary units)
-
-    # Observer-supplied tags only
-    # Example:
-    # {
-    #   "object": ["ball"],
-    #   "colour": ["red"],
-    #   "affect": ["joy"]
-    # }
-    tags: Dict[str, List[str]]
+    tags: Dict[str, List[str]]  # observer-provided labels (some may be sensory)
