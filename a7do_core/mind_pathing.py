@@ -1,17 +1,15 @@
-# a7do_core/mind_pathing.py
-def traverse(anchors: list, world_state):
+from typing import List
+from a7do_core.world_state import WorldState
+
+
+def traverse(anchors: List[str], world: WorldState) -> List[str]:
     """
-    Traverse world history using provided anchors.
-
-    Returns a path of matching event kinds.
-    No inference or guessing is allowed.
+    Minimal mind-path traversal:
+    Returns matching event kinds (no inference).
     """
-
-    path = []
-
-    for anchor in anchors:
-        for ev in world_state.event_history:
-            if anchor == ev:
+    path: List[str] = []
+    for a in anchors:
+        for ev in world.event_history:
+            if ev == a:
                 path.append(ev)
-
     return path
