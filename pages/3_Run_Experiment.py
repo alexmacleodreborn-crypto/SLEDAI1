@@ -1,195 +1,53 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__ + "/..")))
-
 import streamlit as st
+from a7do.caregiver_flow import CaregiverFlow
 
-from a7do.schedule import Schedule
-from a7do.mind import A7DOMind
-from a7do.planner import birth_sequence, drive_home_sequence, arrive_home_sequence
-from a7do.future_paths import FuturePathRegistry
-from a7do.events import ExperienceEvent
-from a7do.profiles import ObjectProfile
-
-st.title("▶️ Run Experiment — Authorised Events Only")
+st.title("▶️ Run Experiment (Control Panel)")
 
 world = st.session_state.get("world")
-profiles = st.session_state.get("profiles")
+mind = st.session_state.get("mind")
+schedule = st.session_state.get("schedule")
 
-if not world:
-    st.warning("Create the World Cage first.")
+if not world or not mind or not schedule:
+    st.warning("System not birthed yet. Open the main page first.")
     st.stop()
 
-if not profiles or not profiles.has_parents():
-    st.warning("Create Mum and Dad in World Profile first.")
-    st.stop()
+st.subheader("Status")
+st.json(schedule.status())
+st.write("Mind last action:", getattr(mind, "last_action", "—"))
 
-# ─────────────────────────────────────────────
-# Initialise Core Components
-# ─────────────────────────────────────────────
-if "schedule" not in st.session_state:
-    st.session_state.schedule = Schedule()
-schedule = st.session_state.schedule
+col1, col2, col3 = st.columns(3)
 
-if "mind" not in st.session_state:
-    st.session_state.mind = A7DOMind(world_map=world, profiles=profiles, schedule=schedule)
-mind = st.session_state.mind
-
-if "future_paths" not in st.session_state:
-    st.session_state.future_paths = FuturePathRegistry()
-registry = st.session_state.future_paths
-
-status = schedule.status()
-
-# ─────────────────────────────────────────────
-# Status Bar
-# ─────────────────────────────────────────────
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Day", status["day"])
-c2.metric("State", status["state"])
-c3.metric("Place", status["place_id"])
-c4.metric("Events Remaining", status["events_remaining"])
-
-# ─────────────────────────────────────────────
-# Day Controls
-# ─────────────────────────────────────────────
-st.divider()
-colA, colB, colC = st.columns(3)
-
-with colA:
-    if st.button("Load Day 0 (Birth → Drive → Home)"):
-        evs = []
-        evs += birth_sequence(world, schedule)
-        evs += drive_home_sequence(world, schedule)
-        evs += arrive_home_sequence(world, schedule)
-        schedule.load(0, evs, start_place="hospital_cwh", start_room="delivery_room")
-        st.success(f"Loaded Day 0 with {len(evs)} events.")
-        st.rerun()
-
-with colB:
-    if st.button("Authorise Wake"):
+with col1:
+    if st.button("🟢 Wake", disabled=(schedule.state != "sleeping")):
         schedule.authorise_wake()
-        mind.trace.append({"phase": "wake", "day": schedule.day})
         st.rerun()
 
-with colC:
-    if st.button("Step Next Event", disabled=(schedule.state != "awake")):
+with col2:
+    if st.button("🔨 Build Next Day (10 events)", disabled=(schedule.state != "sleeping")):
+        flow = CaregiverFlow(world)
+        next_day = schedule.day + 1
+        evs = flow.build_day(next_day, n_events=10)
+        # Start place is where the first event is located (usually home)
+        schedule.load(day=next_day, events=evs, start_place=evs[0].place_id, start_room=evs[0].room)
+        st.success(f"Built Day {next_day} with {len(evs)} events.")
+        st.rerun()
+
+with col3:
+    if st.button("▶️ Step", disabled=(schedule.state != "awake")):
         ev = schedule.next_event()
         if ev is None:
-            schedule.sleep()
-            mind.sleep()
-            schedule.complete()
+            # Day finished: enforce bed + sleep
+            schedule.end_day_enforced()
+            mind.sleep(day=schedule.day)
         else:
-            mind.ingest(ev)
+            mind.ingest(ev, day=schedule.day, event_index=schedule.index)
         st.rerun()
 
-# ─────────────────────────────────────────────
-# Build Next Day from Approved Paths
-# ─────────────────────────────────────────────
 st.divider()
-st.subheader("Build Next Day from Approved Paths")
 
-if st.button("Build Day from Approved Paths"):
-    approved = registry.list(status="approved")
-    if not approved:
-        st.warning("No approved paths.")
-    else:
-        evs = []
-        start_place, start_room = "house_a7do", "living_room"
-
-        for p in approved[:12]:
-            # Object exposure
-            if p.type == "object":
-                name = p.proposal.get("name", "object")
-                if name not in profiles.objects:
-                    profiles.objects[name] = ObjectProfile(
-                        name=name,
-                        category=p.proposal.get("category", "toy"),
-                        colour=p.proposal.get("colour"),
-                        shape=p.proposal.get("shape"),
-                        affordances=p.proposal.get("affordances", []),
-                    )
-
-                evs.append(ExperienceEvent(
-                    place_id=start_place,
-                    room=start_room,
-                    agent="Dad",
-                    action="showed",
-                    obj=name,
-                    emphasis=[name.upper()],
-                    sound={"pattern": "gentle voice"},
-                    touch={"pattern": "held near hands"},
-                    presence=["Dad", "Mum"],
-                    body=schedule.body.snapshot(),
-                ))
-                registry.mark_scheduled(p.path_id)
-
-            # Neighbour visit routine
-            elif p.type == "routine" and p.proposal.get("name") == "neighbour_visit":
-                visitor = p.proposal["visitor"]
-
-                evs.extend([
-                    ExperienceEvent(
-                        place_id="house_a7do",
-                        room="hall",
-                        agent="Street",
-                        action="knocked",
-                        sound={"pattern": "knock knock"},
-                        presence=["Mum", "Dad"],
-                        body=schedule.body.snapshot(),
-                    ),
-                    ExperienceEvent(
-                        place_id="house_a7do",
-                        room="hall",
-                        agent=visitor,
-                        action="said",
-                        obj="hello",
-                        sound={"pattern": "friendly voice"},
-                        presence=[visitor, "Mum", "Dad"],
-                        body=schedule.body.snapshot(),
-                        transaction={"target": "A7DO", "outcome": "calm"},
-                    ),
-                    ExperienceEvent(
-                        place_id="house_a7do",
-                        room="hall",
-                        agent=visitor,
-                        action="left",
-                        body=schedule.body.snapshot(),
-                    ),
-                ])
-                registry.mark_scheduled(p.path_id)
-
-            # Park routine
-            elif p.type == "routine" and p.proposal.get("name") == "short_walk_to_park":
-                evs.append(ExperienceEvent(
-                    place_id="house_a7do",
-                    room="hall",
-                    agent="Mum",
-                    action="carried",
-                    obj="you",
-                    motor={"type": "carried", "intensity": "steady"},
-                    to_place_id="park_01",
-                    pos_xyz=world.places["park_01"].pos_xyz,
-                    sound={"pattern": "outside air"},
-                    smell={"pattern": "grass"},
-                    presence=["Mum", "Dad"],
-                    body=schedule.body.snapshot(),
-                ))
-                registry.mark_scheduled(p.path_id)
-
-        schedule.load(schedule.day + 1, evs, start_place=start_place, start_room=start_room)
-        st.success(f"Built Day {schedule.day} with {len(evs)} events.")
-        st.rerun()
-
-# ─────────────────────────────────────────────
-# Queue Preview
-# ─────────────────────────────────────────────
-st.divider()
-st.subheader("Event Queue Preview")
-
-if not schedule.queue:
-    st.info("No events queued.")
+st.subheader("Events (Today)")
+if schedule.events:
+    for i, ev in enumerate(schedule.events, start=1):
+        st.write(f"{i}. {ev.summary()}")
 else:
-    for i, ev in enumerate(schedule.queue, 1):
-        st.write(
-            f"{i}. {ev.place_id}:{ev.room} | {ev.agent} {ev.action} {ev.obj or ''}"
-        )
+    st.info("No events loaded yet. Build the next day to begin.")
