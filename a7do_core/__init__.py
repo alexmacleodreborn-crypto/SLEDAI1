@@ -1,7 +1,9 @@
-# a7do_core/__init__.py
 """
-A7DO Core Foundation
+A7DO Core Foundation (Frozen)
 
-This package contains the frozen architectural core.
-No learning, inference, or autonomy is implemented here.
+- No semantics
+- No naming objects/people
+- No inference
+- Experience → preferences → sleep replay → gating → permitted response/action
+- Local body loops exist separately from cognition
 """
