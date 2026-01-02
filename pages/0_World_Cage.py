@@ -40,7 +40,14 @@ else:
             f"(location: {bot.location}, "
             f"last seen day {bot.last_seen_day})"
         )
+# -- world events ---
 
+st.markdown("### Major World Events")
+
+for rec in world.event_log:
+    if rec["kind"] == "birth":
+        st.write("🍼 Birth occurred in hospital")
+        
 # --- Movement ---
 st.markdown("### Recent Movement")
 
