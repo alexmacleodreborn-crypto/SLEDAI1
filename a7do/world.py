@@ -1,173 +1,170 @@
-#a7do/world.py
-
+# a7do/world.py
+from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 import random
 
-@dataclass
-class CageBounds:
-    x_min: int = -50
-    x_max: int = 50
-    y_min: int = -50
-    y_max: int = 50
-    z_min: int = -2
-    z_max: int = 10
-
-@dataclass
-class Room:
-    name: str
-    width_m: float
-    length_m: float
-    wall_colour: str
-    windows: int
-    baseline_sound: str
-    baseline_smell: str
-    fixtures: List[str] = field(default_factory=list)
 
 @dataclass
 class Place:
     place_id: str
-    kind: str  # hospital, house, park, shop, street
-    name: str
-    pos_xyz: Tuple[float, float, float]
-    rooms: Dict[str, Room] = field(default_factory=dict)
-    meta: Dict[str, str] = field(default_factory=dict)
+    label: str
+    kind: str
+    pos_xy: Tuple[int, int]
+    sensory: Dict[str, str] = field(default_factory=dict)
+
 
 @dataclass
-class WorldMap:
-    seed: int
-    cage: CageBounds = field(default_factory=CageBounds)
+class BotState:
+    name: str
+    home_place: str
+    state: str = "at_home"
+    location: str = ""
+    last_seen_day: int = -1
+
+
+@dataclass
+class WorldState:
+    seed: int = 0
     places: Dict[str, Place] = field(default_factory=dict)
-    streets: List[Tuple[str, str]] = field(default_factory=list)  # adjacency edges
+    routes: Dict[str, List[str]] = field(default_factory=dict)
+    bots: Dict[str, BotState] = field(default_factory=dict)
+
+    # Observer-only logs (A7DO doesn't "know" these unless present)
+    last_bot_movements: List[dict] = field(default_factory=list)
 
     def add_place(self, place: Place):
         self.places[place.place_id] = place
+        self.routes.setdefault(place.place_id, [])
 
-    def connect(self, a_id: str, b_id: str):
-        self.streets.append((a_id, b_id))
+    def link(self, a: str, b: str):
+        self.routes.setdefault(a, [])
+        self.routes.setdefault(b, [])
+        if b not in self.routes[a]:
+            self.routes[a].append(b)
+        if a not in self.routes[b]:
+            self.routes[b].append(a)
 
-WALLS = ["cream", "light blue", "soft green", "white", "light grey", "warm beige"]
-DOOR_COLOURS = ["blue", "red", "green", "black", "white", "yellow", "orange", "purple"]
+    def get_sensory(self, place_id: str) -> Dict[str, str]:
+        p = self.places.get(place_id)
+        return dict(p.sensory) if p else {}
 
-def _rdim(rng, a, b):
-    return round(rng.uniform(a, b), 2)
+    def get_route(self, a: str, b: str) -> List[str]:
+        # Symbolic: direct hop if linked; else naive 2-hop search
+        if a == b:
+            return [a]
+        if b in self.routes.get(a, []):
+            return [a, b]
+        for mid in self.routes.get(a, []):
+            if b in self.routes.get(mid, []):
+                return [a, mid, b]
+        return [a, b]
 
-def generate_home_rooms(rng) -> Dict[str, Room]:
-    def mk(name, w_rng, l_rng, fixtures, sound, smell):
-        return Room(
-            name=name,
-            width_m=_rdim(rng, *w_rng),
-            length_m=_rdim(rng, *l_rng),
-            wall_colour=rng.choice(WALLS),
-            windows=rng.randint(0, 2),
-            baseline_sound=sound,
-            baseline_smell=smell,
-            fixtures=fixtures,
-        )
 
-    return {
-        "hall": mk("hall", (2.0, 3.5), (3.0, 6.0), ["doorway", "coat hook"], "house hum", "neutral"),
-        "living_room": mk("living_room", (2.8, 5.5), (3.0, 6.0), ["sofa", "table", "lamp"], "quiet", "neutral"),
-        "kitchen": mk("kitchen", (2.5, 5.0), (2.5, 5.5), ["cupboard", "sink", "table"], "clink", "food"),
-        "bathroom": mk("bathroom", (1.8, 3.0), (1.8, 3.5), ["toilet", "sink"], "fan", "soap"),
-        "bedroom_child": mk("bedroom_child", (2.5, 4.5), (2.5, 5.0), ["bed", "curtains", "toy box"], "quiet", "clean"),
-        "bedroom_parent": mk("bedroom_parent", (2.6, 5.0), (2.6, 5.5), ["bed", "wardrobe", "curtains"], "quiet", "clean"),
-        "bedroom_sister": mk("bedroom_sister", (2.4, 4.2), (2.4, 4.8), ["bed", "books", "curtains"], "quiet", "clean"),
-    }
-
-def generate_world(seed: int, neighbour_count: int = 20) -> WorldMap:
+def generate_world(seed: int = 7) -> WorldState:
     rng = random.Random(seed)
-    world = WorldMap(seed=seed)
+    w = WorldState(seed=seed)
 
-    # Anchor: Hospital at centre
-    hospital = Place(
-        place_id="hospital_cwh",
-        kind="hospital",
-        name="City World Hospital",
-        pos_xyz=(0.0, 0.0, 0.0),
-        rooms={
-            "delivery_room": Room(
-                name="delivery_room",
-                width_m=6.0, length_m=6.0,
-                wall_colour="white",
-                windows=0,
-                baseline_sound="echo voices",
-                baseline_smell="clean chemical",
-                fixtures=["lights", "bed", "trolley"]
-            )
-        },
-        meta={"street_name": "Hospital Street"}
-    )
-    world.add_place(hospital)
+    # Core places
+    w.add_place(Place("hospital", "City Hospital", "hospital", (0, 0),
+                      sensory={"smell": "antiseptic", "sound": "voices", "vision": "bright lights"}))
+    w.add_place(Place("park", "Central Park", "park", (3, 1),
+                      sensory={"smell": "grass", "sound": "birds", "vision": "open sky"}))
+    w.add_place(Place("shops", "Local Shops", "shops", (2, -1),
+                      sensory={"smell": "food", "sound": "chatter", "vision": "colourful shelves"}))
 
-    park = Place(place_id="park_01", kind="park", name="Central Park", pos_xyz=(18.0, 6.0, 0.0), meta={"street_name": "Park Lane"})
-    shops = Place(place_id="shops_01", kind="shop", name="Corner Shops", pos_xyz=(12.0, -10.0, 0.0), meta={"street_name": "Market Road"})
-    world.add_place(park)
-    world.add_place(shops)
+    # Services (observer-only realism)
+    for sid, label in [
+        ("groceries", "Groceries"),
+        ("barbers", "Barbers"),
+        ("dentist", "Dentist"),
+        ("optician", "Optician"),
+        ("doctors", "Doctors"),
+    ]:
+        w.add_place(Place(sid, label, "service", (2 + rng.randint(-1, 1), -2 + rng.randint(-1, 1)),
+                          sensory={"sound": "indoor hum", "vision": "fluorescent", "smell": "mixed"}))
+        w.link("shops", sid)
 
-    home_street = Place(place_id="street_home", kind="street", name="Home Street", pos_xyz=(24.0, -2.0, 0.0), meta={"street_name": "Home Street"})
-    world.add_place(home_street)
+    # Home street & houses
+    w.add_place(Place("street_main", "Main Street", "street", (1, 0),
+                      sensory={"sound": "traffic", "vision": "houses"}))
+    w.add_place(Place("house_a7do", "A7DO Home", "home", (1, 1),
+                      sensory={"sound": "home quiet", "smell": "clean fabric"}))
+    w.add_place(Place("bedroom_a7do", "A7DO Bedroom", "room", (1, 2),
+                      sensory={"sound": "muffled", "smell": "bedding"}))
 
-    a7do_home = Place(
-        place_id="house_a7do",
-        kind="house",
-        name="A7DO Home",
-        pos_xyz=(28.0, -2.0, 0.0),
-        rooms=generate_home_rooms(rng),
-        meta={
-            "door_colour": "blue",
-            "front_garden": "yes",
-            "back_garden": "yes",
-            "levels": "2",
-            "street_name": "Home Street",
-            "door_number": "1"
-        }
-    )
-    world.add_place(a7do_home)
+    w.link("hospital", "street_main")
+    w.link("street_main", "park")
+    w.link("street_main", "shops")
+    w.link("street_main", "house_a7do")
+    w.link("house_a7do", "bedroom_a7do")
 
-    for i in range(1, neighbour_count + 1):
-        door_no = str(i + 1)
-        x = 28.0 + (i * 2.0)
-        y = -2.0 + (0.0 if i % 2 == 0 else 1.5)
-        place = Place(
-            place_id=f"house_n_{door_no}",
-            kind="house",
-            name=f"House {door_no}",
-            pos_xyz=(x, y, 0.0),
-            rooms=generate_home_rooms(rng),
-            meta={
-                "door_number": door_no,
-                "door_colour": rng.choice(DOOR_COLOURS),
-                "street_name": "Home Street",
-                "levels": "2",
-                "front_garden": "yes",
-                "back_garden": "yes",
-                "odd_has_car": "yes" if int(door_no) % 2 == 1 else "no",
-                "even_has_dog": "yes" if int(door_no) % 2 == 0 else "no",
-            }
-        )
-        world.add_place(place)
+    # Neighbours: 10 houses (IDs: house_1..house_10)
+    for i in range(1, 11):
+        pid = f"house_{i}"
+        w.add_place(Place(pid, f"House {i}", "home", (1 + i, 1),
+                          sensory={"sound": "neighbour noise", "vision": "front door"}))
+        w.link("street_main", pid)
 
-    world.connect("hospital_cwh", "park_01")
-    world.connect("park_01", "shops_01")
-    world.connect("shops_01", "street_home")
-    world.connect("street_home", "house_a7do")
+    # Define bots (people) (simple)
+    w.bots["Mum"] = BotState("Mum", home_place="house_a7do", location="house_a7do")
+    w.bots["Dad"] = BotState("Dad", home_place="house_a7do", location="house_a7do")
+    w.bots["Sister"] = BotState("Sister", home_place="house_a7do", location="house_a7do")
 
-    for i in range(2, neighbour_count + 2):
-        world.connect("street_home", f"house_n_{i}")
+    # Neighbour 7: Lucy (you referenced)
+    w.bots["Lucy"] = BotState("Lucy", home_place="house_7", location="house_7")
+    # Neighbour dog (Millie)
+    w.bots["Millie"] = BotState("Millie", home_place="house_7", location="house_7", state="at_home")
 
-    return world
+    return w
 
-def ascii_map(world: WorldMap) -> str:
-    lines = []
-    lines.append("World Places:")
-    for pid, p in world.places.items():
-        x, y, z = p.pos_xyz
-        lines.append(f"- {pid:12s} | {p.kind:8s} | {p.name:20s} @ ({x:5.1f},{y:5.1f},{z:3.1f})")
-    lines.append("")
-    lines.append("Connections:")
-    for a, b in world.streets[:50]:
-        lines.append(f"- {a} -> {b}")
-    if len(world.streets) > 50:
-        lines.append(f"... {len(world.streets)-50} more")
-    return "\n".join(lines)
+
+def tick_bot_routines(world: WorldState, day: int) -> List[dict]:
+    """
+    Observer-only background movement tick.
+    DOES NOT create A7DO events.
+    Just logs where bots go today.
+    """
+    rng = random.Random(world.seed * 1000 + day)
+    moves = []
+
+    def move(bot: BotState, to_place: str, state: str):
+        prev = bot.location
+        bot.location = to_place
+        bot.state = state
+        moves.append({"day": day, "bot": bot.name, "from": prev, "to": to_place, "state": state})
+
+    # Lucy: often walks dog to park
+    lucy = world.bots.get("Lucy")
+    millie = world.bots.get("Millie")
+    if lucy:
+        if rng.random() < 0.6:
+            move(lucy, "park", "walking_dog")
+            if millie:
+                move(millie, "park", "walking_with_owner")
+        else:
+            move(lucy, lucy.home_place, "at_home")
+            if millie:
+                move(millie, millie.home_place, "at_home")
+
+    # Dad: simple "out then home" (work is abstract)
+    dad = world.bots.get("Dad")
+    if dad:
+        if rng.random() < 0.5:
+            move(dad, "street_main", "driving")
+        else:
+            move(dad, "house_a7do", "at_home")
+
+    # Mum: shops/park sometimes
+    mum = world.bots.get("Mum")
+    if mum:
+        r = rng.random()
+        if r < 0.35:
+            move(mum, "shops", "at_shops")
+        elif r < 0.60:
+            move(mum, "park", "at_park")
+        else:
+            move(mum, "house_a7do", "at_home")
+
+    world.last_bot_movements = moves
+    return moves
