@@ -1,8 +1,18 @@
-import sys, os
+import streamlit as st
+import sys
+import os
+
+# Ensure local imports work
 ROOT = os.path.dirname(os.path.abspath(__file__))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+st.set_page_config(
+    page_title="A7DO",
+    page_icon="🧠",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 # ─────────────────────────────────────────────
 # Core Imports
 # ─────────────────────────────────────────────
