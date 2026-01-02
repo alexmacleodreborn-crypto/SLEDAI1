@@ -1,4 +1,3 @@
-# a7do_core/internal_log.py
 from dataclasses import dataclass, field
 from typing import Dict, List
 
@@ -6,9 +5,18 @@ from typing import Dict, List
 @dataclass
 class SleepInternalLog:
     """
-    Records what replayed and whether it was internally coherent.
+    Sleep log: validates stability; stores pre-language echoes only.
     """
     replayed_tags: List[str] = field(default_factory=list)
-
-    # tag -> outcome ('stable', 'partial', 'conflict')
     coherence: Dict[str, str] = field(default_factory=dict)
+
+    contrast_summary: Dict[str, List[str]] = field(default_factory=lambda: {
+        "comfort": [],
+        "discomfort": [],
+    })
+
+    motor_echoes: List[str] = field(default_factory=list)
+    vocalisations: List[str] = field(default_factory=list)
+
+    # New: self-generated motor-sound patterns (proto syllables)
+    self_generated_sounds: List[str] = field(default_factory=list)
