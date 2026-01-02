@@ -1,4 +1,4 @@
-#a7do/boy
+#a7do/boy.py
 
 import random
 
