@@ -1,45 +1,37 @@
 import streamlit as st
-import sys, os
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+from a7do.world import WorldState, BotState
 
-st.set_page_config(page_title="A7DO", page_icon="🧠", layout="wide")
+st.set_page_config(
+    page_title="A7DO",
+    layout="wide"
+)
 
-from a7do.world import generate_world
-from a7do.mind import A7DOMind
-from a7do.schedule import Schedule
+st.title("A7DO – Cognitive Experiment")
 
-st.title("🧠 A7DO — Developmental Simulation")
-
-# Auto-create once
+# --- Initialise world ---
 if "world" not in st.session_state:
-    st.session_state.world = generate_world(seed=7)
+    world = WorldState()
+    world.bots["Mum"] = BotState("Mum", "hospital")
+    world.bots["Dad"] = BotState("Dad", "hospital")
+    st.session_state.world = world
 
-if "mind" not in st.session_state:
-    st.session_state.mind = A7DOMind()
+# --- Initialise experiment state ---
+if "current_day" not in st.session_state:
+    st.session_state.current_day = 0
 
-if "schedule" not in st.session_state:
-    st.session_state.schedule = Schedule()
-    # Start at day 0 sleeping in hospital by default
-    st.session_state.schedule.load(
-        day=0,
-        events=[],
-        start_place="hospital",
-        start_room="ward",
-    )
+if "day_executed" not in st.session_state:
+    st.session_state.day_executed = False
 
-world = st.session_state.world
-mind = st.session_state.mind
-schedule = st.session_state.schedule
+if "last_events" not in st.session_state:
+    st.session_state.last_events = []
 
-st.subheader("System Snapshot")
-st.json({
-    "world_places": len(world.places),
-    "world_bots": len(world.bots),
-    "schedule": schedule.status(),
-    "mind": mind.summary(),
-})
+st.markdown("""
+### Status
+- World initialised
+- No experiences yet
+- Go to **Run Experiment** to begin Day 0 (birth)
+""")
 
-st.info("Use **Run Experiment** to build days and step events. Use **Observer** to inspect learning.")
+st.write(f"**Current Day:** {st.session_state.current_day}")
+st.write(f"**A7DO Location:** {st.session_state.world.a7do_location}")
