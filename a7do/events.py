@@ -1,45 +1,43 @@
-#a7do/events.py
-
+# a7do/events.py
+from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
+
 
 @dataclass
 class ExperienceEvent:
+    """A single grounded experience."""
     place_id: str
-    room: str
-    agent: str
-    action: str
+    room: str = "unknown"
+    agent: str = "Environment"
+    action: str = "occurred"
     obj: Optional[str] = None
 
-    narrator: Optional[str] = None
+    # What is physically true in this moment (Observer truth)
+    presence: List[str] = field(default_factory=list)     # people present
+    pets: List[str] = field(default_factory=list)         # pets present
+
+    # Sensory bundles (do not imply meaning; just channels)
+    sound: Dict[str, Any] = field(default_factory=dict)
+    smell: Dict[str, Any] = field(default_factory=dict)
+    touch: Dict[str, Any] = field(default_factory=dict)
+    vision: Dict[str, Any] = field(default_factory=dict)
+    motor: Dict[str, Any] = field(default_factory=dict)
+
+    # Spoken tokens: treated as raw sound-pattern tokens (no meaning yet)
+    sounds_spoken: List[str] = field(default_factory=list)
+
+    # Emphasis tokens (e.g. BALL) used for early language reinforcement
     emphasis: List[str] = field(default_factory=list)
 
-    sound: Dict[str, str] = field(default_factory=dict)
-    smell: Dict[str, str] = field(default_factory=dict)
-    touch: Dict[str, str] = field(default_factory=dict)
-    motor: Dict[str, str] = field(default_factory=dict)
+    # Optional: body snapshot at the moment (for logs)
+    body: Dict[str, Any] = field(default_factory=dict)
 
-    # movement
-    to_place_id: Optional[str] = None
-    to_room: Optional[str] = None
-    pos_xyz: Optional[Tuple[float, float, float]] = None
+    # Movement
+    movement: Dict[str, Any] = field(default_factory=dict)  # {"from":..., "to":...}
 
-    # presence (social continuity without coupling)
-    presence: List[str] = field(default_factory=list)
-
-    # touch vector (somatic scaffold)
-    touch_vector: Dict[str, float] = field(default_factory=dict)  # {"region":..., "pressure":..., "temp":..., "duration_s":...}
-
-    # body snapshot
-    body: Dict[str, float] = field(default_factory=dict)
-
-    # transaction
-    transaction: Dict[str, str] = field(default_factory=dict)
-
-    def prompt(self) -> str:
-        parts = [self.agent, self.action]
-        if self.obj:
-            parts.append(self.obj)
-        if self.emphasis:
-            parts.append(f"(emphasis: {', '.join(self.emphasis)})")
-        return " ".join(parts)
+    def summary(self) -> str:
+        who = ", ".join([p for p in self.presence if p]) or "—"
+        pet = ", ".join([p for p in self.pets if p]) or "—"
+        what = f"{self.agent} {self.action}" + (f" {self.obj}" if self.obj else "")
+        return f"{self.place_id}/{self.room} | people={who} | pets={pet} | {what}"
