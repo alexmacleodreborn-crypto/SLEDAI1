@@ -1,53 +1,50 @@
 import streamlit as st
 from a7do.caregiver_flow import CaregiverFlow
+from a7do.newborn_routine import NewbornRoutine
 
-st.title("▶️ Run Experiment (Control Panel)")
+st.title("Run Experiment")
 
-world = st.session_state.get("world")
-mind = st.session_state.get("mind")
-schedule = st.session_state.get("schedule")
+# ---- Session State ----
+if "current_day" not in st.session_state:
+    st.session_state.current_day = 0
 
-if not world or not mind or not schedule:
-    st.warning("System not birthed yet. Open the main page first.")
-    st.stop()
+if "day_events" not in st.session_state:
+    st.session_state.day_events = None
 
-st.subheader("Status")
-st.json(schedule.status())
-st.write("Mind last action:", getattr(mind, "last_action", "—"))
+if "day_executed" not in st.session_state:
+    st.session_state.day_executed = False
 
-col1, col2, col3 = st.columns(3)
+# ---- Controls ----
+overnight = st.checkbox("Overnight in hospital (Day 0)", value=True)
+run_newborn = st.checkbox("Use newborn routine (20 days)", value=True)
 
-with col1:
-    if st.button("🟢 Wake", disabled=(schedule.state != "sleeping")):
-        schedule.authorise_wake()
-        st.rerun()
+# ---- Run Day ----
+if st.button("Run Day") and not st.session_state.day_executed:
+    day = st.session_state.current_day
 
-with col2:
-    if st.button("🔨 Build Next Day (10 events)", disabled=(schedule.state != "sleeping")):
-        flow = CaregiverFlow(world)
-        next_day = schedule.day + 1
-        evs = flow.build_day(next_day, n_events=10)
-        # Start place is where the first event is located (usually home)
-        schedule.load(day=next_day, events=evs, start_place=evs[0].place_id, start_room=evs[0].room)
-        st.success(f"Built Day {next_day} with {len(evs)} events.")
-        st.rerun()
+    if run_newborn:
+        routine = NewbornRoutine()
+        evs = routine.build_day(day, overnight_in_hospital=overnight)
+    else:
+        flow = CaregiverFlow(st.session_state.world)
+        evs = flow.build_day(day, n_events=10)
 
-with col3:
-    if st.button("▶️ Step", disabled=(schedule.state != "awake")):
-        ev = schedule.next_event()
-        if ev is None:
-            # Day finished: enforce bed + sleep
-            schedule.end_day_enforced()
-            mind.sleep(day=schedule.day)
-        else:
-            mind.ingest(ev, day=schedule.day, event_index=schedule.index)
-        st.rerun()
+    st.session_state.day_events = evs
+    st.session_state.day_executed = True
 
-st.divider()
+# ---- Display ----
+if st.session_state.day_events:
+    st.subheader(f"Day {st.session_state.current_day} Events")
+    for ev in st.session_state.day_events:
+        st.write(
+            f"{ev.index:02d} | {ev.place} | "
+            f"people={ev.people_present} | "
+            f"sounds={ev.sounds} | "
+            f"note={ev.note}"
+        )
 
-st.subheader("Events (Today)")
-if schedule.events:
-    for i, ev in enumerate(schedule.events, start=1):
-        st.write(f"{i}. {ev.summary()}")
-else:
-    st.info("No events loaded yet. Build the next day to begin.")
+# ---- Advance ----
+if st.session_state.day_executed and st.button("Advance to Next Day"):
+    st.session_state.current_day += 1
+    st.session_state.day_events = None
+    st.session_state.day_executed = False
