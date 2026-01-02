@@ -1,4 +1,3 @@
-# a7do_core/world_state.py
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -7,20 +6,17 @@ from typing import Dict, List, Optional
 class WorldState:
     # Temporal
     day: int = 0
-    time: float = 0.0  # simulated time units
+    time: float = 0.0
 
     # Spatial
     location: Optional[str] = None
 
-    # Presence
-    people_present: List[str] = field(default_factory=list)
-    objects_present: List[str] = field(default_factory=list)
-
-    # Body & somatic signals (raw accumulation only)
-    body_state: Dict[str, float] = field(default_factory=dict)
-
-    # History (event kinds only, no interpretation)
+    # History (kinds only)
     event_history: List[str] = field(default_factory=list)
 
-    # Safety
-    frozen: bool = False  # MUST be true during sleep replay
+    # Raw somatic accumulation by channel (not interpretation)
+    # e.g. {"sound": 0.3, "touch": 0.2, ...}
+    body_state: Dict[str, float] = field(default_factory=dict)
+
+    # System guard: frozen during sleep replay (no mutation permitted)
+    frozen: bool = False
