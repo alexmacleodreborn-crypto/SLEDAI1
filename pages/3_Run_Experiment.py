@@ -35,6 +35,23 @@ if st.button("Run Day") and not st.session_state.day_executed:
     st.session_state.last_events = events
     st.success(f"Day {day} executed")
 
+
+st.markdown("### World Event History")
+
+if not st.session_state.world.event_log:
+    st.info("No world events recorded yet.")
+else:
+    for rec in st.session_state.world.event_log:
+        if rec["kind"] == "birth":
+            st.success(
+                f"🍼 BIRTH — Day {rec['day']} at {rec['place'].upper()}"
+            )
+        else:
+            st.write(
+                f"Day {rec['day']} | "
+                f"{rec['kind']} @ {rec['place']}"
+            )
+            
 # --- Show events ---
 if st.session_state.last_events:
     st.markdown("### Events Today")
