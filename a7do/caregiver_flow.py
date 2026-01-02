@@ -1,3 +1,5 @@
+# a7do/caregiver_flow.py
+
 from typing import List
 from a7do.events import ExperienceEvent
 
@@ -9,35 +11,59 @@ class CaregiverFlow:
     def build_day(self, day: int, n_events: int = 10) -> List[ExperienceEvent]:
         events: List[ExperienceEvent] = []
 
-        place = self.start_place if day == 0 else "home"
-
         for i in range(n_events):
-            kind = "care"
-            notes = "routine care"
-
+            # --- Birth: ALWAYS day 0, event 0 ---
             if day == 0 and i == 0:
-                kind = "birth"
-                place = "hospital"
-                notes = "birth"
+                events.append(
+                    ExperienceEvent(
+                        day=0,
+                        index=0,
+                        kind="birth",
+                        place="hospital",
+                        people_present=["Mum", "Dad"],
+                        notes="A7DO birth event",
+                    )
+                )
+                continue
 
-            elif day == 0 and i == n_events // 2:
-                kind = "travel"
-                place = "home"
-                notes = "journey home"
+            # --- Journey home ---
+            if day == 0 and i == n_events // 2:
+                events.append(
+                    ExperienceEvent(
+                        day=day,
+                        index=i,
+                        kind="travel",
+                        place="home",
+                        people_present=["Mum", "Dad"],
+                        transport={"type": "car"},
+                        notes="Journey home from hospital",
+                    )
+                )
+                continue
 
-            elif i == n_events - 1:
-                kind = "sleep"
-                place = "bedroom"
-                notes = "sleep"
+            # --- Sleep ---
+            if i == n_events - 1:
+                events.append(
+                    ExperienceEvent(
+                        day=day,
+                        index=i,
+                        kind="sleep",
+                        place="bedroom",
+                        people_present=["Mum", "Dad"],
+                        notes="Sleep",
+                    )
+                )
+                continue
 
+            # --- Default care ---
             events.append(
                 ExperienceEvent(
                     day=day,
                     index=i,
-                    kind=kind,
-                    place=place,
+                    kind="care",
+                    place="hospital" if day == 0 else "home",
                     people_present=["Mum", "Dad"],
-                    notes=notes,
+                    notes="Routine care",
                 )
             )
 
