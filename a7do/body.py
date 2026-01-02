@@ -1,9 +1,9 @@
 # a7do/body.py
 
-class BodyState:
+class BiologicalState:
     """
-    Minimal embodied state for A7DO.
-    This is NOT cognition — it is physiology.
+    Embodied physiological state for A7DO.
+    This is NOT cognition — it is biology.
     """
 
     def __init__(self):
@@ -13,7 +13,7 @@ class BodyState:
         self.cry = 0.0
 
     def update(self):
-        """Drift physiology over time."""
+        """Natural physiological drift over time."""
         self.hunger = min(1.0, self.hunger + 0.02)
         self.fatigue = min(1.0, self.fatigue + 0.015)
         self.discomfort = min(1.0, self.discomfort + 0.01)
@@ -21,7 +21,7 @@ class BodyState:
 
     def soothe(self, amount=0.2):
         self.discomfort = max(0.0, self.discomfort - amount)
-        self.cry = max(0.0, self.cry - amount)
+        self._recalc_cry()
 
     def feed(self):
         self.hunger = max(0.0, self.hunger - 0.4)
@@ -34,7 +34,9 @@ class BodyState:
     def _recalc_cry(self):
         self.cry = min(
             1.0,
-            0.5 * self.hunger + 0.3 * self.fatigue + 0.4 * self.discomfort,
+            0.5 * self.hunger +
+            0.3 * self.fatigue +
+            0.4 * self.discomfort
         )
 
     def cry_level(self) -> float:
@@ -47,3 +49,7 @@ class BodyState:
             "discomfort": round(self.discomfort, 3),
             "cry": round(self.cry, 3),
         }
+
+
+# Alias for compatibility
+BodyState = BiologicalState
