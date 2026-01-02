@@ -1,4 +1,4 @@
-#a7do/schedules.py
+#a7do/schedule.py
 
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
