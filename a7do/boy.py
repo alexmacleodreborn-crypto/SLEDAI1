@@ -1,3 +1,5 @@
+#a7do/boy
+
 import random
 
 def propose_paths(bot_name: str, registry, world, profiles, mind):
