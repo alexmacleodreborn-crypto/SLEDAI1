@@ -1,39 +1,49 @@
-from dataclasses import dataclass
+# a7do/body.py
 
-@dataclass
-class BiologicalState:
-    hunger: float = 0.5
-    stomach_hurt: float = 0.0
-    fatigue: float = 0.2
+class BodyState:
+    """
+    Minimal embodied state for A7DO.
+    This is NOT cognition — it is physiology.
+    """
 
-    def clamp(self):
-        self.hunger = max(0.0, min(1.0, self.hunger))
-        self.stomach_hurt = max(0.0, min(1.0, self.stomach_hurt))
-        self.fatigue = max(0.0, min(1.0, self.fatigue))
+    def __init__(self):
+        self.hunger = 0.3
+        self.fatigue = 0.2
+        self.discomfort = 0.1
+        self.cry = 0.0
 
-    def tick_awake(self):
-        self.hunger += 0.08
-        self.fatigue += 0.06
-        if self.hunger > 0.8:
-            self.stomach_hurt += 0.05
-        self.clamp()
+    def update(self):
+        """Drift physiology over time."""
+        self.hunger = min(1.0, self.hunger + 0.02)
+        self.fatigue = min(1.0, self.fatigue + 0.015)
+        self.discomfort = min(1.0, self.discomfort + 0.01)
+        self._recalc_cry()
+
+    def soothe(self, amount=0.2):
+        self.discomfort = max(0.0, self.discomfort - amount)
+        self.cry = max(0.0, self.cry - amount)
 
     def feed(self):
-        self.hunger -= 0.35
-        self.stomach_hurt -= 0.10
-        self.clamp()
+        self.hunger = max(0.0, self.hunger - 0.4)
+        self._recalc_cry()
 
-    def rest(self):
-        self.fatigue -= 0.40
-        self.clamp()
+    def sleep(self):
+        self.fatigue = max(0.0, self.fatigue - 0.6)
+        self._recalc_cry()
+
+    def _recalc_cry(self):
+        self.cry = min(
+            1.0,
+            0.5 * self.hunger + 0.3 * self.fatigue + 0.4 * self.discomfort,
+        )
 
     def cry_level(self) -> float:
-        return max(self.hunger, self.stomach_hurt, self.fatigue)
+        return round(self.cry, 3)
 
-    def snapshot(self):
+    def snapshot(self) -> dict:
         return {
-            "hunger": round(self.hunger, 2),
-            "stomach_hurt": round(self.stomach_hurt, 2),
-            "fatigue": round(self.fatigue, 2),
-            "cry_level": round(self.cry_level(), 2),
+            "hunger": round(self.hunger, 3),
+            "fatigue": round(self.fatigue, 3),
+            "discomfort": round(self.discomfort, 3),
+            "cry": round(self.cry, 3),
         }
