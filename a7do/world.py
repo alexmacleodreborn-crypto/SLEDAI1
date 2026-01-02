@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Dict
+from typing import Dict, List
 
 
 @dataclass
@@ -30,3 +30,6 @@ class WorldState:
 
     # Other agents
     bots: Dict[str, BotState] = field(default_factory=dict)
+
+    # 🔑 NEW: Persistent event history (observer truth)
+    event_log: List[dict] = field(default_factory=list)
