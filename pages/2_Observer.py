@@ -1,116 +1,85 @@
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__ + "/..")))
-
 import streamlit as st
-from a7do.world import ascii_map
-from a7do.future_paths import FuturePathRegistry
-from a7do.bot import propose_paths
-from a7do.neighbour_bot import propose_neighbour_visit
 
-st.title("👁️ Observer — World, Trace & Future Paths")
+st.title("👁️ Observer")
 
 world = st.session_state.get("world")
-profiles = st.session_state.get("profiles")
-schedule = st.session_state.get("schedule")
 mind = st.session_state.get("mind")
+schedule = st.session_state.get("schedule")
 
-if not world or not profiles or not schedule or not mind:
-    st.warning("World, Profiles, Schedule, and Mind must be initialised.")
+if not world or not mind or not schedule:
+    st.warning("System not birthed yet. Open the main page first.")
     st.stop()
 
-# Registry lives ONLY observer-side
-if "future_paths" not in st.session_state:
-    st.session_state.future_paths = FuturePathRegistry()
-registry = st.session_state.future_paths
-
+st.subheader("Day Summary")
 status = schedule.status()
-
-# ─────────────────────────────────────────────
-# Status Bar
-# ─────────────────────────────────────────────
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Day", status["day"])
-c2.metric("State", status["state"])
-c3.metric("Place", status["place_id"])
-c4.metric("Events Remaining", status["events_remaining"])
-
-# ─────────────────────────────────────────────
-# World & Body Views
-# ─────────────────────────────────────────────
-left, right = st.columns([1, 1])
-
-with left:
-    st.subheader("World Cage (Observer Reality)")
-    st.code(ascii_map(world))
-
-    st.subheader("A7DO Body State")
-    st.json(status["body"])
-
-    st.subheader("Somatic Scaffold (Touch/Pain)")
-    st.json(mind.somatic.snapshot())
-
-with right:
-    st.subheader("World Profiles Snapshot")
-    st.json(profiles.snapshot())
-
-# ─────────────────────────────────────────────
-# Future Path Registry
-# ─────────────────────────────────────────────
-st.divider()
-st.subheader("Future Paths (Bots → Observer → Schedule)")
+st.json({
+    "day": status["day"],
+    "state": status["state"],
+    "events_total": status["events_total"],
+    "event_index": status["event_index"],
+    "current_place": status["current_place"],
+    "current_room": status["current_room"],
+})
 
 colA, colB = st.columns(2)
 
 with colA:
-    st.write("### Proposal Generators")
-
-    if st.button("CurriculumBot: Propose Learning Paths"):
-        propose_paths("CurriculumBot", registry, world, profiles, mind)
-        st.success("Curriculum paths proposed.")
-        st.rerun()
-
-    if st.button("NeighbourBot: Propose Neighbour Visit"):
-        propose_neighbour_visit(registry, world, profiles, mind)
-        st.success("Neighbour visit proposed (if safe).")
-        st.rerun()
-
-    st.write("### Proposed Paths")
-    for p in registry.list(status="proposed"):
-        st.markdown(f"**{p.path_id}** · `{p.type}` · priority={p.priority}")
-        st.json({
-            "proposal": p.proposal,
-            "unlock": p.unlock,
-            "novelty_cost": p.novelty_cost,
-            "notes": p.notes,
-        })
-        if st.button(f"Approve {p.path_id}", key=f"approve_{p.path_id}"):
-            registry.approve(p.path_id)
-            st.rerun()
+    st.subheader("Event Timeline (what A7DO experienced)")
+    if schedule.events:
+        for idx, ev in enumerate(schedule.events, start=1):
+            st.write(f"**Event {idx}** — {ev.place_id}/{ev.room}")
+            st.caption(f"people: {', '.join(ev.presence) if ev.presence else '—'} | pets: {', '.join(ev.pets) if ev.pets else '—'}")
+            st.caption(f"sounds_spoken: {', '.join(ev.sounds_spoken) if ev.sounds_spoken else '—'}")
+            st.caption(f"body@event: {ev.body if ev.body else '—'}")
+    else:
+        st.info("No events loaded.")
 
 with colB:
-    st.write("### Approved (Ready for Scheduling)")
-    approved = registry.list(status="approved")
-    if not approved:
-        st.info("No approved paths yet.")
-    for p in approved:
-        st.markdown(f"**{p.path_id}** · `{p.type}`")
-        st.json(p.proposal)
+    st.subheader("Mind Activity (thinking timeline)")
+    # show last ~40 activity records
+    activity = getattr(mind, "activity", [])
+    if activity:
+        for row in activity[-40:]:
+            st.write(row)
+    else:
+        st.info("No mind activity yet.")
 
-# ─────────────────────────────────────────────
-# Trace & Memory
-# ─────────────────────────────────────────────
 st.divider()
-st.subheader("A7DO Trace (Latest First)")
 
-if not mind.trace:
-    st.info("No experiences yet.")
+st.subheader("Learning Signals")
+mind_summary = mind.summary()
+st.json(mind_summary)
+
+st.subheader("Lexicon (top)")
+words = mind.known_words()
+if words:
+    top = list(words.items())[:30]
+    st.write({k: v for k, v in top})
 else:
-    for t in mind.trace[::-1][:40]:
-        st.markdown(f"### {t.get('phase','—').upper()}")
-        st.json(t)
+    st.info("No lexical exposures yet.")
 
-st.subheader("Lexicon Exposure")
-st.json(mind.lexicon)
+st.subheader("Traces (observed co-presence)")
+traces = getattr(mind, "trace", [])
+if traces:
+    for t in traces[-25:]:
+        st.write(t)
+else:
+    st.info("No traces yet.")
 
-st.subheader("Last Sleep Replay")
-st.json(mind.last_sleep or {"note": "No sleep yet"})
+st.divider()
+
+st.subheader("Movement Logs")
+st.write("**A7DO movement**")
+if schedule.movements:
+    for m in schedule.movements[-25:]:
+        st.write(m)
+else:
+    st.info("No A7DO movement logged yet.")
+
+st.write("**Background bot movement (Observer-only)**")
+moves = getattr(world, "last_bot_movements", [])
+if moves:
+    for m in moves:
+        st.write(m)
+else:
+    st.info("No background movements recorded for this day yet (build a day).")
