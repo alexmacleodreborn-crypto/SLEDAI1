@@ -3,10 +3,6 @@ from a7do.events import ExperienceEvent
 
 
 def apply_event_to_world(world: WorldState, ev: ExperienceEvent):
-    """
-    Observer-side reconciliation of ExperienceEvent → WorldState.
-    """
-
     # Time
     world.current_day = ev.day
     world.current_event_index = ev.index
@@ -31,7 +27,7 @@ def apply_event_to_world(world: WorldState, ev: ExperienceEvent):
     if ev.transport:
         world.last_transport = ev.transport
 
-    # People present move with A7DO
+    # People present
     for name in ev.people_present:
         if name in world.bots:
             bot = world.bots[name]
@@ -43,3 +39,12 @@ def apply_event_to_world(world: WorldState, ev: ExperienceEvent):
     if ev.kind == "sleep":
         world.last_sleep_location = world.a7do_location
         world.last_sleep_day = ev.day
+
+    # 🔑 CRITICAL: persist event for observer
+    world.event_log.append({
+        "day": ev.day,
+        "index": ev.index,
+        "kind": ev.kind,
+        "place": ev.place,
+        "notes": ev.notes,
+    })
