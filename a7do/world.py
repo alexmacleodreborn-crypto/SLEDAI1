@@ -147,6 +147,52 @@ def generate_world(seed: int = 7) -> WorldState:
 
     return w
 
+# =========================
+# BOT ROUTINE TICK (Observer)
+# =========================
+
+def tick_bot_routines(world: WorldState, day_index: int):
+    """
+    Advance bot routines for the day.
+    Observer-side only. A7DO never sees this directly.
+    """
+    world.last_bot_movements.clear()
+
+    for bot in world.bots.values():
+        prev_location = bot.location
+
+        # Very simple routine logic for now
+        if bot.state == "sleeping":
+            bot.state = "at_home"
+            bot.location = bot.home_place
+
+        elif bot.state == "at_home":
+            # probabilistic outings
+            if bot.name in ("Mum", "Dad") and day_index % 2 == 0:
+                bot.state = "at_work"
+                bot.location = "shops"  # symbolic work placeholder
+            elif bot.name == "Lucy":
+                bot.state = "walking_dog"
+                bot.location = "park"
+            else:
+                bot.state = "at_home"
+
+        elif bot.state in ("at_work", "walking_dog"):
+            bot.state = "returning_home"
+            bot.location = bot.home_place
+
+        elif bot.state == "returning_home":
+            bot.state = "at_home"
+            bot.location = bot.home_place
+
+        # Track movement for observer
+        if prev_location != bot.location:
+            world.last_bot_movements.append({
+                "bot": bot.name,
+                "from": prev_location,
+                "to": bot.location,
+                "day": day_index,
+            })
 
 # =========================
 # ASCII MAP (Observer)
