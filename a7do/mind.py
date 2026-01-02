@@ -1,131 +1,93 @@
-#a7do/mind.py
-
-from typing import Dict, Any, List
-from collections import defaultdict
-from a7do.sleep import SleepEngine
+# a7do/mind.py
+from __future__ import annotations
+from typing import Any, Dict, List, Optional
+from a7do.body import BiologicalState
 from a7do.somatic import SomaticState
+from a7do.events import ExperienceEvent
+
 
 class A7DOMind:
-    def __init__(self, world_map, profiles, schedule):
-        self.world = world_map
-        self.profiles = profiles
-        self.schedule = schedule
+    """
+    Minimal mind loop for this phase:
+    - records traces (observations)
+    - tracks a simple lexicon exposure counter
+    - logs internal activity timeline
+    """
 
-        self.memory: List[Any] = []
-        self.lexicon: Dict[str, int] = {}
-        self.edges = defaultdict(int)
-        self.trace: List[Dict[str, Any]] = []
-
-        self.sleep_engine = SleepEngine()
+    def __init__(self):
+        self.body = BiologicalState()
         self.somatic = SomaticState()
 
-        self.last_coherence = None
-        self.last_sleep = None
-        self.last_action = None
+        self.day = 0
+        self.trace: List[Dict[str, Any]] = []
+        self.activity: List[Dict[str, Any]] = []   # "thinking timeline"
+        self.lexicon: Dict[str, int] = {}
+        self.last_action: str = "waiting"
 
-    def _inc(self, token: str):
-        t = (token or "").strip().lower()
-        if not t:
-            return
-        self.lexicon[t] = self.lexicon.get(t, 0) + 1
+    def _log(self, kind: str, **payload):
+        self.activity.append({"kind": kind, **payload})
 
-    def coherence_check(self, ev) -> Dict[str, Any]:
-        issues = []
+    def ingest(self, ev: ExperienceEvent, day: int, event_index: int):
+        # Internal processing markers
+        self.last_action = f"ingest event {event_index}"
+        self._log("ingest", day=day, event=event_index, place=ev.place_id, room=ev.room)
 
-        if ev.place_id not in self.world.places:
-            issues.append(f"unknown_place:{ev.place_id}")
-        else:
-            place = self.world.places[ev.place_id]
-            if place.kind in ("hospital", "house") and ev.room and ev.room not in place.rooms:
-                issues.append(f"unknown_room:{ev.room}")
+        # Body drift while awake
+        self.body.update()
+        self.somatic.decay()
 
-        agent_ok = (ev.agent == "A7DO") or (ev.agent in self.profiles.people) or (ev.agent in self.profiles.animals) or (ev.agent in ("Nurse", "Street"))
-        if not agent_ok:
-            issues.append(f"unknown_agent:{ev.agent}")
+        # Lexicon exposure: spoken tokens + emphasis
+        for tok in (ev.sounds_spoken or []):
+            t = str(tok).strip().lower()
+            if t:
+                self.lexicon[t] = self.lexicon.get(t, 0) + 1
 
-        score = 1.0 if not issues else max(0.0, 1.0 - 0.2 * len(issues))
-        return {"score": round(score, 2), "issues": issues}
+        for tok in (ev.emphasis or []):
+            t = str(tok).strip().lower()
+            if t:
+                self.lexicon[t] = self.lexicon.get(t, 0) + 2  # emphasis weighs more
 
-    def ingest(self, ev) -> Dict[str, Any]:
-        coh = self.coherence_check(ev)
-        self.last_coherence = coh
+        # Observational trace: co-presence in a place
+        if ev.presence:
+            for person in ev.presence:
+                if person and person not in ("Mum", "Dad", "Sister"):
+                    self.trace.append({
+                        "day": day,
+                        "event": event_index,
+                        "place": ev.place_id,
+                        "saw": person,
+                        "with": [p for p in ev.presence if p and p != person],
+                        "pets": list(ev.pets or []),
+                        "action": ev.action,
+                        "object": ev.obj,
+                    })
+                    self._log("trace_write", day=day, event=event_index, saw=person, place=ev.place_id)
 
-        if coh["score"] <= 0.2:
-            self.last_action = "blocked"
-            self.trace.append({"phase": "blocked", "prompt": ev.prompt(), "coherence": coh})
-            return {"ok": False, "blocked": True, "coherence": coh}
+        # Somatic hooks (optional, safe defaults)
+        if ev.touch.get("pattern"):
+            self.somatic.apply_touch("chest", 0.15)
 
-        # movement
-        if ev.to_place_id:
-            self.schedule.spatial.place_id = ev.to_place_id
-        if ev.to_room:
-            self.schedule.spatial.room = ev.to_room
-        if ev.pos_xyz:
-            self.schedule.spatial.pos_xyz = ev.pos_xyz
-        if ev.motor.get("type"):
-            self.schedule.spatial.locomotion = ev.motor.get("type")
+        # Store body snapshot into event for observer visibility
+        ev.body = self.body.snapshot()
+        self._log("body", day=day, event=event_index, **ev.body)
 
-        # somatic touch
-        tv = getattr(ev, "touch_vector", None) or {}
-        if tv and "region" in tv:
-            self.somatic.apply_touch(
-                region=str(tv.get("region")),
-                pressure=float(tv.get("pressure", 0.0)),
-                temperature=float(tv.get("temp", 0.0)),
-                duration_s=float(tv.get("duration_s", 0.0)),
-            )
-
-        # store memory
-        self.memory.append(ev)
-
-        # lexicon
-        for token in [ev.place_id, ev.room, ev.agent, ev.action, ev.obj]:
-            if token:
-                self._inc(str(token))
-        for w in ev.emphasis:
-            self._inc(w)
-
-        # edges
-        a = f"agent:{ev.agent}"
-        p = f"place:{ev.place_id}"
-        r = f"room:{ev.room}"
-        self.edges[(a, p)] += 1
-        self.edges[(a, r)] += 1
-        self.edges[(p, r)] += 1
-        if ev.obj:
-            o = f"obj:{ev.obj}"
-            self.edges[(a, o)] += 1
-            self.edges[(o, p)] += 1
-        for pr in ev.presence:
-            self.edges[(a, f"present:{pr}")] += 1
-
-        # transaction logging
-        if ev.transaction and ev.transaction.get("target") == "A7DO":
-            outcome = ev.transaction.get("outcome", "calm")
-            self.profiles.set_interaction(ev.agent, outcome=outcome, day=self.schedule.day)
-
-        self.last_action = f"experience:{ev.place_id}/{ev.room}"
-        self.trace.append({
-            "phase": "experience",
-            "prompt": ev.prompt(),
-            "event": {
-                "place_id": ev.place_id,
-                "room": ev.room,
-                "agent": ev.agent,
-                "action": ev.action,
-                "obj": ev.obj,
-                "presence": ev.presence,
-                "touch_vector": ev.touch_vector,
-                "coherence": coh,
-                "narrator": ev.narrator
-            },
-            "coherence": coh
-        })
-        return {"ok": True, "coherence": coh}
-
-    def sleep(self) -> Dict[str, Any]:
-        rep = self.sleep_engine.replay(self.memory)
-        self.last_sleep = rep
-        self.trace.append({"phase": "sleep", "report": rep})
+    def sleep(self, day: int):
         self.last_action = "sleep"
-        return rep
+        self._log("sleep_start", day=day)
+        self.body.sleep()
+        # In this phase, “sleep” does not invent meaning; it just marks consolidation.
+        self._log("sleep_end", day=day, body=self.body.snapshot())
+
+    def known_words(self) -> Dict[str, int]:
+        return dict(sorted(self.lexicon.items(), key=lambda x: (-x[1], x[0])))
+
+    def summary(self) -> Dict[str, Any]:
+        return {
+            "day": self.day,
+            "last_action": self.last_action,
+            "body": self.body.snapshot(),
+            "somatic": self.somatic.snapshot(),
+            "lexicon_size": len(self.lexicon),
+            "trace_count": len(self.trace),
+            "activity_len": len(self.activity),
+        }
