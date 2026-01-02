@@ -4,13 +4,12 @@ from a7do.world import WorldState, BotState
 from a7do.caregiver_flow import CaregiverFlow
 from a7do.a7do.event_applier import apply_event_to_world
 
+st.title("Run Experiment")
 
-# Initialise session
+# --- Guards ---
 if "world" not in st.session_state:
-    world = WorldState()
-    world.bots["Mum"] = BotState("Mum", "hospital")
-    world.bots["Dad"] = BotState("Dad", "hospital")
-    st.session_state.world = world
+    st.error("World not initialised. Go to Home.")
+    st.stop()
 
 if "current_day" not in st.session_state:
     st.session_state.current_day = 0
@@ -18,15 +17,12 @@ if "current_day" not in st.session_state:
 if "day_executed" not in st.session_state:
     st.session_state.day_executed = False
 
-
 flow = CaregiverFlow()
 
-st.title("Run Experiment")
+st.write(f"### Day {st.session_state.current_day}")
+st.write(f"A7DO location: **{st.session_state.world.a7do_location}**")
 
-st.write(f"Day: {st.session_state.current_day}")
-st.write(f"A7DO location: {st.session_state.world.a7do_location}")
-
-# Run day once
+# --- Run Day ---
 if st.button("Run Day") and not st.session_state.day_executed:
     st.session_state.day_executed = True
 
@@ -37,10 +33,20 @@ if st.button("Run Day") and not st.session_state.day_executed:
         apply_event_to_world(st.session_state.world, ev)
 
     st.session_state.last_events = events
-    st.success("Day executed")
+    st.success(f"Day {day} executed")
 
-# Advance
+# --- Show events ---
+if st.session_state.last_events:
+    st.markdown("### Events Today")
+    for ev in st.session_state.last_events:
+        st.write(
+            f"Day {ev.day} | Event {ev.index} | "
+            f"{ev.kind.upper()} @ {ev.place}"
+        )
+
+# --- Advance ---
 if st.session_state.day_executed:
     if st.button("Advance to Next Day"):
         st.session_state.current_day += 1
         st.session_state.day_executed = False
+        st.session_state.last_events = []
