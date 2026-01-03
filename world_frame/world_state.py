@@ -10,24 +10,20 @@ class WorldEvent:
     place: str
     description: str
     tags: List[str] = field(default_factory=list)
+    sensory: Dict[str, List[str]] = field(default_factory=dict)
 
 
 @dataclass
 class WorldState:
     """
-    Objective world state.
-    This is ground truth, not A7DO's understanding.
+    Objective world state (ground truth).
     """
 
-    # --- Core world timeline ---
     day: int = 0
-    time: float = 0.0  # 0.0–24.0
+    time: float = 0.0
     birthed: bool = False
-
-    # --- Location ---
     current_place: str = "Hospital"
 
-    # --- History ---
     events: List[WorldEvent] = field(default_factory=list)
 
     # -------------------------------------------------
@@ -35,9 +31,6 @@ class WorldState:
     # -------------------------------------------------
 
     def register_birth(self):
-        """
-        Birth is a WORLD event, not a mental one.
-        """
         if not self.birthed:
             self.birthed = True
             self.current_place = "Hospital"
@@ -46,14 +39,16 @@ class WorldState:
                     time=self.time,
                     place="Hospital",
                     description="A7DO birth event",
-                    tags=["birth", "hospital"],
+                    tags=["birth"],
+                    sensory={
+                        "sound": ["crying", "voices"],
+                        "touch": ["cold air", "hands"],
+                        "visual": ["bright lights"],
+                    },
                 )
             )
 
     def move_to(self, place: str, description: str = ""):
-        """
-        Physical movement in the world.
-        """
         self.current_place = place
         self.events.append(
             WorldEvent(
@@ -61,21 +56,17 @@ class WorldState:
                 place=place,
                 description=description or f"Moved to {place}",
                 tags=["movement"],
+                sensory={
+                    "motion": ["movement"],
+                },
             )
         )
 
     def tick(self, delta: float = 0.5):
-        """
-        Advance world time.
-        """
         self.time += delta
         if self.time >= 24.0:
             self.time = 0.0
             self.day += 1
-
-    # -------------------------------------------------
-    # Observer-safe snapshot
-    # -------------------------------------------------
 
     def snapshot(self) -> Dict:
         return {
