@@ -1,5 +1,5 @@
 import streamlit as st
-from a7do_core.a7mind import A7Mind
+from a7do_core.a7mind import A7DOMind
 
 a7do: A7Mind = st.session_state.a7do
 
