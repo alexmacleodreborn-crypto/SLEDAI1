@@ -1,10 +1,13 @@
 import streamlit as st
 
 # ============================================================
-# Imports (ONLY new architecture)
+# Imports — NEW ARCHITECTURE ONLY
 # ============================================================
 
 from world_frame.world_state import WorldState
+from world_frame.event_generator import WorldEventGenerator
+from world_frame.transition import apply_transition  # your existing file
+
 from a7do_core.world_bridge import WorldToA7DOBridge
 from a7do_core.a7mind import A7Mind
 
@@ -19,7 +22,7 @@ st.set_page_config(
 )
 
 st.title("A7DO – Cognitive Emergence")
-st.caption("Objective World ⇄ Sensory Bridge ⇄ Embodied Mind")
+st.caption("Objective World → Sensory Bridge → Embodied Mind")
 
 
 # ============================================================
@@ -29,6 +32,9 @@ st.caption("Objective World ⇄ Sensory Bridge ⇄ Embodied Mind")
 if "world_state" not in st.session_state:
     st.session_state.world_state = WorldState()
 
+if "event_generator" not in st.session_state:
+    st.session_state.event_generator = WorldEventGenerator()
+
 if "bridge" not in st.session_state:
     st.session_state.bridge = WorldToA7DOBridge()
 
@@ -37,12 +43,13 @@ if "a7do" not in st.session_state:
 
 
 world = st.session_state.world_state
+generator = st.session_state.event_generator
 bridge = st.session_state.bridge
 a7do = st.session_state.a7do
 
 
 # ============================================================
-# Sidebar — World Control
+# Sidebar — World Control (Observer Authority)
 # ============================================================
 
 st.sidebar.header("World Control")
@@ -58,9 +65,17 @@ st.sidebar.divider()
 if st.sidebar.button("⏱ Advance Time"):
     world.tick(0.5)
 
+    # Generate world events for this moment
+    new_events = generator.generate(world)
+    for ev in new_events:
+        world.events.append(ev)
+
+st.sidebar.divider()
+
 if st.sidebar.button("🚗 Journey Home"):
-    world.move_to(
-        "Home",
+    apply_transition(
+        world,
+        to_place="Home",
         description="Journey home with parents",
     )
 
@@ -71,7 +86,7 @@ if st.sidebar.button("😴 Sleep"):
 
 
 # ============================================================
-# World → A7DO Bridge
+# Bridge — World → A7DO
 # ============================================================
 
 packets = bridge.pull_new_packets(world)
@@ -95,10 +110,10 @@ with left:
 
     st.subheader("🗺 World Events (Latest)")
     if world.events:
-        for ev in world.events[-10:]:
+        for ev in world.events[-12:]:
             st.write(
                 f"• Day {world.day} @ {ev.time:.2f} — "
-                f"{ev.place}: {ev.description}"
+                f"{ev.place}: {ev.description} | tags={ev.tags}"
             )
     else:
         st.write("No world events yet.")
