@@ -1,26 +1,16 @@
-# world_frame/experience_controller.py
+from world_frame.places import HOSPITAL
+
 
 class ExperienceController:
-    """
-    Controls which life phase A7DO is in.
-    """
-
-    PHASES = [
-        "pre_birth",
-        "birth",
-        "hospital",
-        "journey_home",
-        "home_day",
-        "sleep",
-    ]
-
-    def __init__(self):
-        self.phase = "pre_birth"
-
-    def advance(self):
-        idx = self.PHASES.index(self.phase)
-        if idx < len(self.PHASES) - 1:
-            self.phase = self.PHASES[idx + 1]
-
-    def is_phase(self, name: str) -> bool:
-        return self.phase == name
+    def birth_sequence(self):
+        return [
+            {"type": "PRESSURE", "target": "chest", "intensity": 1.0},
+            {"type": "PRESSURE", "target": "head", "intensity": 0.9},
+            {"type": "LIQUID", "target": "skin"},
+            {"type": "SOUND", "value": "scream", "loudness": 1.0},
+            {"type": "LIGHT", "brightness": 1.0},
+            {"type": "AIR", "cold": True},
+            {"type": "BREATH", "first": True},
+            {"type": "VOICE", "source": "mother"},
+            {"type": "TOUCH", "source": "hands"},
+        ]
