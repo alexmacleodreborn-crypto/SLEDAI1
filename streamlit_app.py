@@ -1,24 +1,17 @@
-import streamlit as st
-
-from a7do_core.a7mind import A7DOMind
-from world_frame.world_state import WorldState
-
-st.set_page_config(
-    page_title="A7DO – Cognitive Emergence",
-    layout="wide"
-)
-
-# --------------------------------------------------
-# Session bootstrap
-# --------------------------------------------------
-
-if "world" not in st.session_state:
-    st.session_state.world = WorldState()
-
 if "a7do" not in st.session_state:
-    st.session_state.a7do = A7DOMind()
+    st.session_state.a7do = A7DOState()
+    st.session_state.world = WorldController()
+    st.session_state.cycle = DayCycle(
+        st.session_state.a7do,
+        st.session_state.world
+    )
 
-st.title("🧠 A7DO – Cognitive Emergence")
-st.caption("Observer-controlled cognitive development environment")
+if st.button("Run Birth"):
+    st.session_state.cycle.initialise_if_needed()
 
-st.success("System initialised. Use the pages on the left.")
+if st.button("Run Day"):
+    st.session_state.cycle.run_day()
+
+if st.button("Sleep"):
+    st.session_state.cycle.sleep()
+    st.session_state.cycle.advance_day()
