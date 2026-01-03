@@ -1,149 +1,115 @@
+# streamlit_app.py
+
 import streamlit as st
 
-# ============================================================
-# Imports — NEW ARCHITECTURE ONLY
-# ============================================================
+from a7do_core.a7mind import A7DOMind
+from a7do_core.sleep import SleepProcessor
 
 from world_frame.world_state import WorldState
 from world_frame.event_generator import WorldEventGenerator
-from world_frame.transition import apply_transition  # your existing file
-
 from a7do_core.world_bridge import WorldToA7DOBridge
-from a7do_core.a7mind import A7Mind
 
 
-# ============================================================
-# Streamlit Configuration
-# ============================================================
+# -------------------------------------------------
+# Streamlit setup
+# -------------------------------------------------
 
 st.set_page_config(
     page_title="A7DO – Cognitive Emergence",
     layout="wide",
 )
 
-st.title("A7DO – Cognitive Emergence")
-st.caption("Objective World → Sensory Bridge → Embodied Mind")
+st.title("🧠 A7DO – Cognitive Emergence")
 
 
-# ============================================================
-# Session State Initialization
-# ============================================================
+# -------------------------------------------------
+# Session state initialisation
+# -------------------------------------------------
 
-if "world_state" not in st.session_state:
-    st.session_state.world_state = WorldState()
+if "mind" not in st.session_state:
+    st.session_state.mind = A7DOMind()
 
-if "event_generator" not in st.session_state:
-    st.session_state.event_generator = WorldEventGenerator()
+if "world" not in st.session_state:
+    st.session_state.world = WorldState()
 
 if "bridge" not in st.session_state:
     st.session_state.bridge = WorldToA7DOBridge()
 
-if "a7do" not in st.session_state:
-    st.session_state.a7do = A7Mind()
+if "generator" not in st.session_state:
+    st.session_state.generator = WorldEventGenerator()
+
+if "sleep" not in st.session_state:
+    st.session_state.sleep = SleepProcessor(st.session_state.mind)
 
 
-world = st.session_state.world_state
-generator = st.session_state.event_generator
+mind = st.session_state.mind
+world = st.session_state.world
 bridge = st.session_state.bridge
-a7do = st.session_state.a7do
+generator = st.session_state.generator
+sleep = st.session_state.sleep
 
 
-# ============================================================
-# Sidebar — World Control (Observer Authority)
-# ============================================================
+# -------------------------------------------------
+# Controls
+# -------------------------------------------------
 
-st.sidebar.header("World Control")
+st.sidebar.header("Controls")
 
 if not world.birthed:
     if st.sidebar.button("🍼 Birth A7DO"):
         world.register_birth()
 else:
-    st.sidebar.success("A7DO is Birthed")
+    if st.sidebar.button("⏱ Advance Time"):
+        world.tick(0.5)
 
-st.sidebar.divider()
-
-if st.sidebar.button("⏱ Advance Time"):
-    world.tick(0.5)
-
-    # Generate world events for this moment
-    new_events = generator.generate(world)
-    for ev in new_events:
-        world.events.append(ev)
-
-st.sidebar.divider()
-
-if st.sidebar.button("🚗 Journey Home"):
-    apply_transition(
-        world,
-        to_place="Home",
-        description="Journey home with parents",
-    )
-
-st.sidebar.divider()
-
-if st.sidebar.button("😴 Sleep"):
-    a7do.sleep()
+    if st.sidebar.button("😴 Sleep"):
+        sleep.sleep_cycle()
 
 
-# ============================================================
-# Bridge — World → A7DO
-# ============================================================
+# -------------------------------------------------
+# World processing
+# -------------------------------------------------
 
+# Generate world events
+events = generator.generate(world)
+world.events.extend(events)
+
+# Translate to sensory packets
 packets = bridge.pull_new_packets(world)
 
 for pkt in packets:
-    a7do.receive_sensory_packet(pkt)
+    mind.process_sensory_packet(pkt)
 
 
-# ============================================================
-# Main Display
-# ============================================================
+# -------------------------------------------------
+# Main display
+# -------------------------------------------------
 
-left, right = st.columns(2)
+col1, col2 = st.columns(2)
 
-# -----------------------------
-# World Frame (Objective)
-# -----------------------------
-with left:
-    st.subheader("🌍 World Frame (Objective Reality)")
+with col1:
+    st.subheader("🌍 World State")
     st.json(world.snapshot())
 
-    st.subheader("🗺 World Events (Latest)")
-    if world.events:
-        for ev in world.events[-12:]:
-            st.write(
-                f"• Day {world.day} @ {ev.time:.2f} — "
-                f"{ev.place}: {ev.description} | tags={ev.tags}"
-            )
+    st.subheader("📜 Recent World Events")
+    for ev in world.events[-5:]:
+        st.write(
+            f"**{ev.place}** @ {round(ev.time,2)} — {ev.description}"
+        )
+
+
+with col2:
+    st.subheader("🧠 A7DO Internal State")
+
+    st.metric("Sensory Packets", len(mind.sensory_memory))
+
+    st.subheader("🔁 Familiarity (Prediction Confidence)")
+    fam = mind.familiarity.snapshot()
+
+    if fam:
+        st.json(fam)
     else:
-        st.write("No world events yet.")
+        st.write("No familiarity formed yet.")
 
-
-# -----------------------------
-# A7DO Core (Perceived)
-# -----------------------------
-with right:
-    st.subheader("🧠 A7DO Core (Perceived Experience)")
-    st.json(a7do.snapshot())
-
-    st.subheader("👶 Recent Sensory Packets")
-    if packets:
-        for pkt in packets:
-            st.write(
-                f"• {pkt.place} | "
-                f"tags={pkt.tags} | "
-                f"sensory={pkt.sensory}"
-            )
-    else:
-        st.write("No new sensory input.")
-
-
-# ============================================================
-# Footer
-# ============================================================
-
-st.divider()
-st.caption(
-    "World Frame = what exists | A7DO Core = what is perceived | "
-    "Meaning emerges later through repetition and sleep"
-)
+    st.subheader("🛌 Sleep Status")
+    st.write("Sleep consolidates repeated sensory patterns.")
