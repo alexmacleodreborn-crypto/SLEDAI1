@@ -1,11 +1,9 @@
-from dataclasses import dataclass
-from typing import Dict, Optional
+from a7do_core.perceived_world_state import PerceivedWorldState
 
-
-@dataclass
 class A7DOState:
-    """
-    Embodied perspective slice (what A7DO can 'be in' at the moment).
-    """
-    current_location: Optional[str]
-    somatic_signals: Dict[str, float]
+    def __init__(self):
+        self.birthed = False
+        self.day_index = 0
+
+        self.perceived_world = PerceivedWorldState()
+        self.internal_log = []
