@@ -8,80 +8,88 @@ from world_frame.world_state import WorldEvent, WorldState
 
 class WorldEventGenerator:
     """
-    Generates objective world events based on time, place, and routines.
-    This is caregiver / environment logic, not intelligence.
+    Generates objective world events with explicit sensory affordances.
     """
 
     def __init__(self):
         self.last_generated_time: float = -1.0
 
     def generate(self, world: WorldState) -> List[WorldEvent]:
-        """
-        Generate new world events if time has advanced.
-        """
         events: List[WorldEvent] = []
 
-        # Prevent duplicate generation at same time
         if world.time == self.last_generated_time:
             return events
 
         self.last_generated_time = world.time
 
-        # -------------------------------------------------
-        # Birth & hospital care
-        # -------------------------------------------------
+        # ----------------------------
+        # Hospital care
+        # ----------------------------
         if world.birthed and world.current_place == "Hospital":
             events.append(
                 WorldEvent(
                     time=world.time,
                     place="Hospital",
-                    description="Nurse checks vital signs",
-                    tags=["care", "touch", "voice"],
+                    description="Nurse gently checks body",
+                    tags=["care"],
+                    sensory={
+                        "touch": ["hands", "pressure"],
+                        "sound": ["soft voice"],
+                        "visual": ["faces"],
+                    },
                 )
             )
 
-            if random.random() < 0.3:
+            if random.random() < 0.4:
                 events.append(
                     WorldEvent(
                         time=world.time,
                         place="Hospital",
                         description="Bright hospital lights overhead",
-                        tags=["light", "visual"],
+                        tags=["light"],
+                        sensory={
+                            "visual": ["bright light"],
+                        },
                     )
                 )
 
-        # -------------------------------------------------
+        # ----------------------------
         # Home routines
-        # -------------------------------------------------
+        # ----------------------------
         if world.current_place == "Home":
             routine = random.choice(
                 [
-                    "Parent speaks softly nearby",
-                    "Being held gently",
-                    "Household background noise",
-                    "Warm blanket placed",
+                    WorldEvent(
+                        time=world.time,
+                        place="Home",
+                        description="Parent speaks softly nearby",
+                        tags=["care"],
+                        sensory={"sound": ["soft voice"]},
+                    ),
+                    WorldEvent(
+                        time=world.time,
+                        place="Home",
+                        description="Being held gently",
+                        tags=["comfort"],
+                        sensory={"touch": ["warm arms"]},
+                    ),
+                    WorldEvent(
+                        time=world.time,
+                        place="Home",
+                        description="Household background noise",
+                        tags=["sound"],
+                        sensory={"sound": ["muffled noise"]},
+                    ),
+                    WorldEvent(
+                        time=world.time,
+                        place="Home",
+                        description="Warm blanket placed",
+                        tags=["warmth"],
+                        sensory={"touch": ["warm fabric"]},
+                    ),
                 ]
             )
 
-            tag_map = {
-                "speaks": ["voice", "sound"],
-                "held": ["touch", "comfort"],
-                "noise": ["sound"],
-                "blanket": ["warmth", "touch"],
-            }
-
-            tags = []
-            for key, t in tag_map.items():
-                if key in routine.lower():
-                    tags.extend(t)
-
-            events.append(
-                WorldEvent(
-                    time=world.time,
-                    place="Home",
-                    description=routine,
-                    tags=tags or ["neutral"],
-                )
-            )
+            events.append(routine)
 
         return events
