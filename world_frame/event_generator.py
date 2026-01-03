@@ -8,24 +8,44 @@ from world_frame.world_state import WorldEvent, WorldState
 
 class WorldEventGenerator:
     """
-    Generates objective world events with explicit sensory affordances.
+    Generates objective world events gated by experience phase.
     """
 
     def __init__(self):
         self.last_generated_time: float = -1.0
 
-    def generate(self, world: WorldState) -> List[WorldEvent]:
+    def generate(self, world: WorldState, experience) -> List[WorldEvent]:
         events: List[WorldEvent] = []
 
+        # Prevent duplicate generation at the same world time
         if world.time == self.last_generated_time:
             return events
 
         self.last_generated_time = world.time
 
-        # ----------------------------
-        # Hospital care
-        # ----------------------------
-        if world.birthed and world.current_place == "Hospital":
+        # -------------------------------------------------
+        # BIRTH PHASE – intense sensory onset
+        # -------------------------------------------------
+        if experience.is_phase("birth"):
+            events.append(
+                WorldEvent(
+                    time=world.time,
+                    place="Hospital",
+                    description="Sudden bright lights and loud sounds",
+                    tags=["birth"],
+                    sensory={
+                        "visual": ["bright light"],
+                        "sound": ["loud noise"],
+                        "touch": ["cold air"],
+                    },
+                )
+            )
+            return events
+
+        # -------------------------------------------------
+        # HOSPITAL PHASE – repeated care and settling
+        # -------------------------------------------------
+        if experience.is_phase("hospital"):
             events.append(
                 WorldEvent(
                     time=world.time,
@@ -53,10 +73,31 @@ class WorldEventGenerator:
                     )
                 )
 
-        # ----------------------------
-        # Home routines
-        # ----------------------------
-        if world.current_place == "Home":
+            return events
+
+        # -------------------------------------------------
+        # JOURNEY HOME PHASE – motion and transition
+        # -------------------------------------------------
+        if experience.is_phase("journey_home"):
+            events.append(
+                WorldEvent(
+                    time=world.time,
+                    place="Journey",
+                    description="Vehicle movement and engine noise",
+                    tags=["movement"],
+                    sensory={
+                        "motion": ["movement"],
+                        "sound": ["engine noise"],
+                        "visual": ["passing light"],
+                    },
+                )
+            )
+            return events
+
+        # -------------------------------------------------
+        # HOME DAY PHASE – stable environment
+        # -------------------------------------------------
+        if experience.is_phase("home_day"):
             routine = random.choice(
                 [
                     WorldEvent(
@@ -89,7 +130,7 @@ class WorldEventGenerator:
                     ),
                 ]
             )
-
             events.append(routine)
+            return events
 
         return events
