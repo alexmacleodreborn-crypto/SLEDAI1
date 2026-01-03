@@ -1,46 +1,32 @@
-from a7do_core.events import ExperienceEvent
-from a7do_core.world_state import WorldState
 from a7do_core.perceived_world_state import PerceivedWorldState
+from a7do_core.internal_log import log_internal
 
-SENSORY_CHANNELS = {"sound", "light", "touch", "smell", "taste", "motion"}
 
-
-def apply_event(
-    event: ExperienceEvent,
-    world: WorldState,
-    perceived: PerceivedWorldState | None = None,
-):
+def apply_event(a7do, event):
     """
-    Applies a single ExperienceEvent to A7DO.
-    No inference. No semantics. No shortcuts.
+    Apply an EXPERIENCE event to A7DO.
+    This never mutates the real world.
     """
 
-    if world.frozen:
-        raise RuntimeError("Cannot apply live events while world is frozen (sleep replay)")
+    pw: PerceivedWorldState = a7do.perceived_world
 
-    # Update world clock
-    world.day = event.day
-    world.time += float(event.duration)
+    # Location awareness
+    if event.place:
+        pw.current_place = event.place
+        log_internal(a7do, f"I am at {event.place}")
 
-    # Place token only (string or Place object)
-    if hasattr(event.place, "name"):
-        world.location = event.place.name
-    else:
-        world.location = event.place
+    # Sensory channels
+    for sense, value in event.sensory.items():
+        pw.senses[sense].append(value)
+        log_internal(a7do, f"I sense {sense}: {value}")
 
-    world.event_history.append(event.kind)
+    # Body changes
+    if event.body:
+        for part, state in event.body.items():
+            a7do.body_local.update(part, state)
+            log_internal(a7do, f"My {part} feels {state}")
 
-    # Raw body accumulation
-    for tag, values in (event.tags or {}).items():
-        if tag in SENSORY_CHANNELS:
-            world.body_state[tag] = world.body_state.get(tag, 0.0) + 0.1 * len(values)
-
-    # Subjective place familiarity (if provided)
-    if perceived is not None:
-        affect = (event.tags or {}).get("affect", [])
-        perceived.update_from_event(
-            place=world.location or "",
-            day=world.day,
-            duration=float(event.duration),
-            affect=affect,
-        )
+    # Emotional / internal tags
+    for tag in event.tags:
+        pw.tags.add(tag)
+        log_internal(a7do, f"Something happened: {tag}")
