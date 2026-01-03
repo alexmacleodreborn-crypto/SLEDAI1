@@ -9,28 +9,24 @@ a7do = st.session_state.a7do
 
 st.header("▶️ Run Time")
 
-# -----------------------------
-# Preconditions
-# -----------------------------
-
 if not world.birthed:
     st.warning("Birth has not occurred yet.")
     st.stop()
 
-# -----------------------------
-# Run single event
-# -----------------------------
-
 generator = EventGenerator()
 
-if st.button("▶️ Run Next Event"):
+# ---------------------------
+# Run single event
+# ---------------------------
+
+if st.button("▶ Run Next Event"):
     event = generator.next_event(world)
     apply_event(a7do, world, event)
     st.success(f"Event applied: {event.label}")
 
-# -----------------------------
+# ---------------------------
 # Run full day
-# -----------------------------
+# ---------------------------
 
 if st.button("⏩ Run Full Day"):
     events = generator.generate_day(world, n_events=10)
@@ -38,21 +34,16 @@ if st.button("⏩ Run Full Day"):
         apply_event(a7do, world, ev)
     st.success("Day completed.")
 
-# -----------------------------
+# ---------------------------
 # Sleep
-# -----------------------------
+# ---------------------------
 
 if st.button("🌙 Sleep"):
     sleep_cycle(a7do)
     world.advance_day()
     st.success("Sleep complete. New day started.")
 
-# -----------------------------
-# Status
-# -----------------------------
-
 st.subheader("📅 Time")
-
 st.json({
     "day": world.day,
     "time": world.time,
