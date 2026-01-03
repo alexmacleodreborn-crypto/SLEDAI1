@@ -1,6 +1,6 @@
 import streamlit as st
 
-from a7do_core.a7mind import A7Mind
+from a7do_core.a7mind import A7DOMind
 from world_frame.world_state import WorldState
 
 st.set_page_config(
@@ -16,7 +16,7 @@ if "world" not in st.session_state:
     st.session_state.world = WorldState()
 
 if "a7do" not in st.session_state:
-    st.session_state.a7do = A7Mind()
+    st.session_state.a7do = A7DOMind()
 
 st.title("🧠 A7DO – Cognitive Emergence")
 st.caption("Observer-controlled cognitive development environment")
