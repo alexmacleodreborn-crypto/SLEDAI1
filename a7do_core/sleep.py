@@ -1,79 +1,23 @@
 # a7do_core/sleep.py
 
-from dataclasses import dataclass, field
-from typing import List, Dict, Any
-
-
-@dataclass
-class SleepTrace:
+class SleepProcessor:
     """
-    One replayed sensory moment during sleep.
-    """
-    place: str
-    tags: List[str]
-    comfort_score: float
-    time: float
-
-
-class SleepEngine:
-    """
-    Handles sleep-phase replay and stabilization.
+    Handles sleep consolidation.
     """
 
-    def __init__(self):
-        self.sleep_cycles: int = 0
-        self.traces: List[SleepTrace] = []
+    def __init__(self, mind):
+        self.mind = mind
 
-    def sleep(self, sensory_memories: List[Any]):
+    def sleep_cycle(self):
         """
-        Perform one sleep cycle over recent sensory memories.
+        Replay recent sensory experiences to stabilise familiarity.
         """
-        self.sleep_cycles += 1
-        self.traces.clear()
+        if not self.mind.sensory_memory:
+            return
 
-        for mem in sensory_memories:
-            comfort = self._score_comfort(mem)
-            self.traces.append(
-                SleepTrace(
-                    place=mem.place,
-                    tags=mem.tags,
-                    comfort_score=comfort,
-                    time=mem.time,
-                )
-            )
+        recent_packets = self.mind.sensory_memory[-50:]
 
-    def _score_comfort(self, mem) -> float:
-        """
-        Very simple comfort / distress heuristic.
-        """
-        score = 0.0
-
-        if "distress" in mem.tags:
-            score -= 1.0
-
-        if "temperature" in mem.tags:
-            if mem.body.get("temperature") == "cold":
-                score -= 0.5
-
-        if not mem.tags:
-            score += 0.2  # neutral calm presence
-
-        return score
-
-    def snapshot(self) -> Dict[str, Any]:
-        """
-        Observer-safe view of sleep state.
-        """
-        return {
-            "sleep_cycles": self.sleep_cycles,
-            "trace_count": len(self.traces),
-            "avg_comfort": (
-                round(
-                    sum(t.comfort_score for t in self.traces)
-                    / len(self.traces),
-                    3,
-                )
-                if self.traces
-                else 0.0
-            ),
-        }
+        for packet in recent_packets:
+            for modality, values in packet.sensory.items():
+                for v in values:
+                    self.mind.familiarity.reinforce(modality, v)
