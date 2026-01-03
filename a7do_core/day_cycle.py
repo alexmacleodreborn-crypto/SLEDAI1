@@ -1,48 +1,63 @@
-# a7do/day_cycle.py
+from typing import List
 
-from dataclasses import dataclass
+from a7do_core.a7do_state import A7DOState
+from a7do_core.event_applier import apply_event
+from a7do_core.sleep import run_sleep
 
-DAY_BIRTH = "birth"
-DAY_NORMAL = "normal"
+from world_frame.world_controller import WorldController
+from world_frame.transition import apply_transition
 
-PHASE_WAKE = "wake"
-PHASE_ACTIVE = "active"
-PHASE_SLEEP = "sleep"
 
-@dataclass
 class DayCycle:
-    day_index: int = 0
-    day_type: str = DAY_BIRTH
-    phase: str = PHASE_WAKE
-    birthed: bool = False
+    def __init__(self, a7do: A7DOState, world: WorldController):
+        self.a7do = a7do
+        self.world = world
 
-    def is_birth_day(self) -> bool:
-        return self.day_type == DAY_BIRTH
+    def initialise_if_needed(self):
+        """
+        Birth happens here. Exactly once.
+        """
+        if self.a7do.birthed:
+            return []
 
-    def begin_birth(self):
-        self.birthed = True
-        self.day_index = 0
-        self.day_type = DAY_BIRTH
-        self.phase = PHASE_ACTIVE
+        # Ask the world for the birth experience
+        birth_events = self.world.generate_birth_experience()
 
-    def begin_new_day(self):
-        self.day_index += 1
-        self.day_type = DAY_NORMAL
-        self.phase = PHASE_WAKE
+        for ev in birth_events:
+            apply_event(self.a7do, ev)
 
-    def wake(self):
-        self.phase = PHASE_ACTIVE
+        self.a7do.birthed = True
+        self.a7do.current_place = "Hospital"
+        self.a7do.internal_log.append("Birth completed")
+
+        return birth_events
+
+    def run_day(self, n_events: int = 10):
+        """
+        Runs one waking block of experience.
+        """
+        events = self.world.generate_day_events(
+            day=self.a7do.day_index,
+            location=self.a7do.current_place,
+            n_events=n_events,
+        )
+
+        for ev in events:
+            apply_event(self.a7do, ev)
+
+        return events
 
     def sleep(self):
-        self.phase = PHASE_SLEEP
+        """
+        Consolidation + learning happens here.
+        """
+        run_sleep(self.a7do)
+        self.a7do.internal_log.append("Sleep complete")
 
-    def advance_after_sleep(self):
+    def advance_day(self):
         """
-        Called once sleep consolidation finishes.
+        Transition world + increment time.
         """
-        if self.day_type == DAY_BIRTH:
-            # Birth day ends → normal life begins
-            self.begin_new_day()
-        else:
-            # Normal next day
-            self.begin_new_day()
+        apply_transition(self.a7do, self.world)
+        self.a7do.day_index += 1
+        self.a7do.internal_log.append(f"Day {self.a7do.day_index} started")
